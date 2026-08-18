@@ -1,0 +1,6 @@
+rendered_at: 2026-08-18 14:28:31.128249
+input_file: C:/Users/wisdo/Dropbox/02_proj_cloud/_localrepo/er_review_grp/data/20260518_ER_reviewtable_merged_rangeshiftdata.csv
+input_file: C:/Users/wisdo/Dropbox/02_proj_cloud/_localrepo/er_review_grp/data/20260813_ER_reviewtable_cleaning.xlsx
+output_dir: C:/Users/wisdo/Dropbox/02_proj_cloud/_localrepo/er_review_grp/output/reviewtable_organize/20260818-142816
+run_time_seconds: 8.4
+run_time_minutes: 0.14

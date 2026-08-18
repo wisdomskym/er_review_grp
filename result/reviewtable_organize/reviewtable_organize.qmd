@@ -1,0 +1,2620 @@
+---
+title: "reviewtable_organize"
+author: "tksym"
+date: today
+params:
+  in1: null
+  in2: null
+  dir_out: null
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    toc-location: right
+    fig-format: png
+    embed-resources: true
+    self-contained-math: true
+    code-fold: true
+    code-overflow: wrap
+  pdf:
+    toc: false
+editor: 
+  mode: source
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+knitr::opts_chunk$set(
+  fig.width = 16,
+  fig.height = 9,
+  dpi = 120,
+  out.width = "100%",
+  fig.align = "center",
+  cache = FALSE
+)
+
+time_start <- Sys.time()
+```
+
+```{r}
+#| label: packages
+
+pacman::p_load(
+  # data import
+  here,
+  fs,
+  readxl,
+
+  # data manipulation
+  tidyverse,
+  
+  # plot
+  ggh4x,
+
+  # misc
+  tictoc,
+  sessioninfo,
+  report
+)
+
+```
+
+```{r}
+#| label: othersettings
+#| include: false
+
+# assign from outside
+in1 <- params$in1
+in2 <- params$in2
+dir_out <- params$dir_out
+
+
+```
+
+# WORK FLOW
+
+- Import data
+
+- Check original data
+
+- Data cleaning
+
+- Visualize number of range shift observations per ecosystem
+
+# DATA
+
+Importing previous review table: `{r} fs::path_rel(in1)`
+
+Importing updated review table: `{r} fs::path_rel(in1)`
+
+Output directory: `{r} fs::path_rel(dir_out)`
+
+
+
+# Import
+
+```{r}
+
+# original data
+rt_prev <- read_csv(in1)
+
+
+# data after small checks in excel
+rt <- read_xlsx(in2, sheet = "dataentry_ok")
+
+# other sheets
+lon_latrange <- read_xlsx(in2, sheet = "longitude_latrange")
+ref_en <- read_xlsx(in2, sheet = "En-list_ok")
+ref_ja <- read_xlsx(in2, sheet = "Ja-list_ok")
+
+
+
+
+# ============================================== #
+# import color code used in polygon
+
+# studyarea_color <- readr::read_csv(
+#   "C:/Users/wisdo/Dropbox/02_proj_cloud/_localrepo/er_review/result/create_leaflet_map/studyarea_color.csv"
+# )
+
+```
+
+
+
+# Check original data
+
+```{r}
+#| eval: FALSE
+#| echo: FALSE
+
+
+# glimpse(rt_prev)
+
+# ============================================== #
+# vars for simple cleaning
+
+cols_upper_prev <- c("recorder_name",
+                "reference_no",
+                "study_region",
+                "area_name",
+                "taxonomic_unit",
+                "taxonomic_unit_revised")
+
+
+
+
+# ============================================== #
+# simple cleaning
+
+rt_prev2 <- rt_prev %>% 
+  # convert space in columns to underbar
+  rename_with(~ .x %>%
+                str_replace_all(" ", "_") %>%
+                str_to_lower()) %>% 
+  
+  # convert text to lower (except specified columns)
+  mutate(across(c(where(is.character),
+                  -all_of(cols_upper_prev)),
+                str_to_lower)) %>% 
+  
+  # replace NA with "na"
+  mutate(across(everything(),
+                ~ tidyr::replace_na(.x, "na")))
+
+
+
+
+# glimpse(rt_prev2)
+```
+
+
+```{r}
+#| eval: FALSE
+#| echo: FALSE
+
+# ============================================== #
+# check: show unique values for each column
+
+nrow(rt_prev2)
+
+for (nm in names(rt_prev2)) {
+  vals <- unique(rt_prev2[[nm]])
+
+  cat("\n====================\n")
+  cat("Column:", nm, "\n")
+  cat("n_unique:", length(vals), "\n")
+  cat("====================\n")
+
+  print(vals)
+
+}
+
+
+```
+
+
+
+
+
+
+
+# Clean range shfit data 1 (light)
+
+```{r}
+# ============================================== #
+# simple cleaning
+
+# glimpse(rt)
+# glimpse(rt2)
+
+
+cols_upper <- c("recorder_name",
+                "reference_no",
+                "study_area",
+                "specific_area",
+                "taxonomic_unit",
+                "taxonomic_unit_revised")
+
+
+
+rt2 <- rt %>% 
+  # convert space in columns to underbar
+  rename_with(~ .x %>%
+                str_replace_all(" ", "_") %>%
+                str_to_lower()) %>% 
+  
+  # convert text to lower (except specified columns)
+  mutate(across(c(where(is.character),
+                  -all_of(cols_upper)),
+                str_to_lower)) %>% 
+  
+  # replace NA with "na"
+  mutate(across(everything(),
+                ~ tidyr::replace_na(.x, "na")))
+
+# glimpse(rt2)
+
+
+
+# ============================================== #
+# filter out irrelevant data at initial stage
+# edit start period and end period data
+
+rt2$include %>% unique() %>% sort()
+
+rt3 <- rt2 %>% 
+  filter(
+    # this include col was made in excel for rows based on:
+    # n_years: too large (comparison with glacial time)
+    # gradient = na
+    # magnitude_of_shift = na
+    # notes = no resurvey
+    # include == 2 is "pending" literature
+    include %in% 1) %>%
+  
+  # start period
+  rename(startperiod_orig = start_period) %>%
+  mutate(
+    # extract all 4-digit years
+    startperiod_years = str_extract_all(startperiod_orig, "\\d{4}"),
+    
+    startperiod_startyear = map_int(
+      startperiod_years,
+      ~ ifelse(length(.x) == 0, NA_integer_, as.integer(.x[1]))
+    ),
+    
+    startperiod_endyear = map_int(
+      startperiod_years,
+      ~ ifelse(length(.x) == 0, NA_integer_, as.integer(.x[length(.x)]))
+    ),
+    
+    startperiod_midyear = (startperiod_startyear + startperiod_endyear) / 2
+  ) %>%
+  select(-startperiod_years) %>% 
+  relocate(startperiod_startyear, startperiod_endyear, startperiod_midyear, .after = startperiod_orig) %>% 
+  
+  # end period
+  rename(endperiod_orig = end_period) %>%
+  mutate(
+    # extract all 4-digit years
+    endperiod_years = str_extract_all(endperiod_orig, "\\d{4}"),
+    
+    endperiod_startyear = map_int(
+      endperiod_years,
+      ~ ifelse(length(.x) == 0, NA_integer_, as.integer(.x[1]))
+    ),
+    
+    endperiod_endyear = map_int(
+      endperiod_years,
+      ~ ifelse(length(.x) == 0, NA_integer_, as.integer(.x[length(.x)]))
+    ),
+    
+    endperiod_midyear = (endperiod_startyear + endperiod_endyear) / 2
+  ) %>%
+  select(-endperiod_years) %>% 
+  relocate(endperiod_startyear, endperiod_endyear, endperiod_midyear, .after = endperiod_orig) %>% 
+  
+  # n_years
+  mutate(
+    n_years_midyear = endperiod_midyear - startperiod_midyear
+  ) %>% 
+  relocate(n_years_midyear, .after = n_years)
+
+nrow(rt2)
+nrow(rt3)
+```
+
+
+
+
+# Clean reference info
+```{r}
+
+# ============================================== #
+# minor edits
+
+# glimpse(ref_en)
+# glimpse(ref_ja)
+
+ref_en2 <- ref_en %>% 
+  # convert space in columns to underbar
+  rename_with(~ .x %>%
+                str_replace_all(" ", "_") %>%
+                str_to_lower())
+
+ref_ja2 <- ref_ja %>% 
+  # convert space in columns to underbar
+  rename_with(~ .x %>%
+                str_replace_all(" ", "_") %>%
+                str_to_lower())
+
+
+# glimpse(ref_en2)
+# glimpse(ref_ja2)
+
+
+ref_en3 <- ref_en2 %>% 
+  filter(reference_no %in% unique(rt3$reference_no)) %>% 
+  select(reference_no, article_title, data_section, source_title, publication_year, authors, doi) %>% 
+  mutate(publication_year = as.numeric(publication_year),
+         language = "English")
+
+ref_ja3 <- ref_ja2 %>% 
+  filter(reference_no %in% unique(rt3$reference_no)) %>% 
+  select(reference_no, article_title, data_section, source_title, publication_year, authors, doi) %>% 
+  mutate(language = "Japanese")
+
+# glimpse(ref_en3)
+# glimpse(ref_ja3)
+
+
+
+# ============================================== #
+# bind
+ref_bind <- bind_rows(ref_en3,
+                      ref_ja3) %>% 
+  relocate(language, reference_no, doi, authors, article_title, publication_year, source_title, data_section) %>% 
+  mutate(author_year = str_c(authors, publication_year, sep = " "))
+
+
+# ============================================== #
+# check and change cell entries
+
+
+# ------------ #
+ref_bind$author_year %>% unique()
+ref_bind$author_year %>% class()
+
+authors_recode <- c(
+  "Sakio & Masuzawa 2012" = "Sakio & Masuzawa 2012",
+  "Jung, S; Pang, IC; Lee, JH; Choi, I; Cha, HK 2014" = "Jung et al. 2014",
+  "Winkler, DE; Amagai, Y; Huxman, TE; Kaneko, M; Kudo, G 2016" = "Winkler et al. 2016",
+  "Shimazaki, M; Sasaki, T; Hikosaka, K; Nakashizuka, T 2011" = "Shimazaki et al. 2011",
+  "Tougou, D; Musolin, DL; Fujisaki, K 2009" = "Tougou et al. 2009",
+  "Kakehi, S; Narimatsu, Y; Okamura, Y; Yagura, A; Ito, S 2021" = "Kakehi et al. 2021",
+  "Kurihara, T; Takami, H; Kosuge, T; Chiba, S; Iseda, M; Sasaki, T 2011" = "Kurihara et al. 2011",
+  "T Sakiyama 2024" = "Sakiyama 2024",
+  "Naoki H. Kumagai, Jorge García Molinosa, Hiroya Yamano, Shintaro Takao, Masahiko Fujii, Yasuhiro Yamanaka 2018" = "Kumagai et al. 2018",
+  "S. Watari, S. Takemura, H. Oyaizu 2024" = "Watari et al. 2024",
+  "Tu, CY; Tian, YJ; Hsieh, CH 2015" = "Tu et al. 2015",
+  "Yamano, H; Sugihara, K; Nomura, K 2011" = "Yamano et al. 2011",
+  "Y Kawauchi, Y Yagi, T Yano, K Fujiwara 2023" = "Kawauchi et al. 2023",
+  "K Higashiguchi, S Nishijima, Y Kamimura… 2025" = "Higashiguchi et al. 2025",
+  "Y Kawakami, K Yamazaki, K Ohashi 2014" = "Kawakami et al. 2014",
+  "山内 貴義, 工藤 雅志, 高槻 成紀 2007" = "Yamauchi et al. 2007",
+  "北原 正彦 2008" = "Kitahara 2008",
+  "木澤 遼; 濱 侃; 吉田 圭一郎 2022" = "Kizawa et al. 2022",
+  "奥村 忠誠; 清水 庸; 大政 謙次 2009" = "Okumura et al. 2009"
+)
+
+
+# ------------ #
+ref_bind$source_title %>% unique()
+
+journal_recode <- c(
+  "Journal of Plant Research" = "Journal of Plant Research",
+  "Reviews in fish biology and fisheries" = "Reviews in Fish Biology and Fisheries",
+  "Plant ecology" = "Plant Ecology",
+  "Global change biology" = "Global Change Biology",
+  "Entomologia experimentalis et applicata" = "Entomologia Experimentalis et Applicata",
+  "Marine ecology progress series" = "Marine Ecology Progress Series",
+  "Marine biology" = "Marine Biology",
+  "PhD dissertation" = "PhD dissertation",
+  "PNAS" = "PNAS",
+  "Frontiers in Marine Science" = "Frontiers in Marine Science",
+  "Fisheries oceanography" = "Fisheries Oceanography",
+  "Geophysical research letters" = "Geophysical Research Letters",
+  "Regional studies in marine science" = "Regional Studies in Marine Science",
+  "SSRN" = "SSRN",
+  "Applied entomology and zoology" = "Applied Entomology and Zoology",
+  "哺乳類科学" = "哺乳類科学",
+  "昆虫と自然" = "昆虫と自然",
+  "E-journal GEO" = "E-journal GEO",
+  "環境科学会誌" = "環境科学会誌"
+)
+
+
+# ------------ #
+
+ref_bind2 <- ref_bind %>% 
+  mutate(publication_id = recode(author_year, !!!authors_recode)) %>% 
+  relocate(publication_id, .after = reference_no) %>% 
+  select(-author_year) %>%
+  mutate(
+    source_title = recode(source_title, !!!journal_recode)
+  ) %>% 
+  arrange(language, publication_year)
+
+
+
+
+
+```
+
+
+
+# Clean range shfit data 2 (heavy)
+
+```{r}
+# ============================================== #
+# column names
+
+names(rt3)
+
+
+
+# ============================================== #
+# check and change cell entries
+
+
+# ------------ #
+rt3$geographic_scale %>% unique()
+
+geographicscale_recode <- c()
+
+
+# ------------ #
+rt3$study_area %>% unique()
+
+studyarea_recode <- c()
+
+
+# ------------ #
+rt3$specific_area %>% unique()
+
+specificarea_recode <- c()
+
+
+# ------------ #
+rt3$kingdom %>% unique()
+
+kingdom_recode <- c(
+  "plant" = "plantae",
+  "animal" = "animalia",
+  "chromista" = "chromista",
+  "動物" = "animalia",
+  "植物" = "plantae"
+  
+)
+
+kingdom_recode %>% unique()
+
+# ------------ #
+rt3$taxonomic_resolution %>% unique()
+
+taxres_recode <- c(
+  "species-level" = "species",
+  "species" = "species",
+  "種レベル" = "species",
+  "order-level" = "order")
+
+taxres_recode %>% unique()
+
+
+# ------------ #
+rt3$taxonomic_unit %>% unique()
+
+# recode taxonomic_unit_revised
+taxunit_recode <- c()
+
+
+# ------------ #
+rt3$taxonomic_unit_revised %>% unique() %>% sort()
+
+# supported by ai
+taxunitrev_recode <- c(
+
+  # check later: na
+  "na" = "na"
+)
+
+taxunitrev_recode %>% unique()
+
+
+# ------------ #
+rt3$ecosystem %>% unique()
+
+
+ecosystem_recode <- c(
+  
+  # alpine
+  "alpine" = "alpine",
+  
+  # forest
+  "forest" = "forest",
+  "森林" = "forest",
+  "forest, alpine" = "forest", # Hitomi E0267 Hakkoda, include subalpine as forest
+  
+  # grassland
+  "grassland" = "grassland",
+  
+  # wetland
+  "wetlands" = "wetland",
+  
+  # marine
+  "marine" = "marine",
+  
+  
+  
+  # check
+  
+  # mixed ecosystems as terrestrial
+  "forest, grassland" = "terrestrial", # Dai E0400 Nezara viridula kamemushi
+  "森林、草地" = "terrestrial", # Nonaka J0202 sika
+  "限定なし" ="terrestrial", # Nonaka J0201 Birds
+  
+  # broad terrestrial kept as terrestrial
+  "terrestrial" = "terrestrial" # Sueyoshi E2247 ladybug
+)
+
+ecosystem_recode %>% unique()
+
+realm_recode <- c(
+  
+  # terrestrial
+  "alpine" = "terrestrial",
+  "forest" = "terrestrial",
+  "grassland" = "terrestrial",
+  "wetland" = "terrestrial",
+  
+  # tentative terrestrial
+  "urban" = "terrestrial",
+
+    
+  # marine
+  "marine" = "marine"
+)
+
+
+# ------------ #
+rt3$information_source %>% unique()
+
+infosrc_recode <- c(
+  
+  # resurvey by authors
+  "resurvey" =
+    "resurvey",
+  "authors did the resurvey" =
+    "resurvey",
+  "著者が再調査を実施" =
+    "resurvey",
+  
+  
+  # remote sensing
+  "remote sensing" =
+    "remote sensing",
+  "aerial photograph by forest agency" =
+    "remote sensing",
+  "geospatial information authority of japan" =
+    "remote sensing",
+  
+  
+  # literature
+  "literature" =
+    "literature",
+  "published papers" =
+    "literature",
+  
+  
+  # literature and speciemens
+  "literature and museum specimens" =
+    "literature and specimens",
+  "specimen records, literature" =
+    "literature and specimens",
+  
+
+  # citizen and specimens
+  "citizen science and specimens" =
+    "citizen science and specimens",
+  
+  
+  
+  # check later with Jorge: fishery statistics, separate trawl or not?
+  "fishery statistics" =
+    "fishery statistics",
+  "commercial fisheries data" =
+    "fishery statistics",
+  "fishery and aquaculture production statistics 　国の漁獲統計" =
+    "fishery statistics",
+  
+  "bottom-trawl surveys" =
+    "trawl survey",
+  "trawl fishery data" =
+    "trawl fishery",
+  "fishery-independent trawl surveys by fisheries research and education agency (fra)" =
+    "fishery-independent trawl survey",
+  
+  
+  # check later: governmental survey
+  "distribution survey by the ministry of the environment" =
+    "governmental monitoring survey",
+  
+  
+  # check later: database
+  "データベースを利用" =
+    "multiple sources",
+  
+  # check 
+  "na" =
+    "na" # Fatima E0608
+)
+
+infosrc_recode %>% unique()
+
+
+# ------------ #
+rt3$gradient %>% unique() %>% sort()
+
+gradient_recode <- c(
+  
+  # elevation
+  "elevation" = "elevation",
+  "標高" = "elevation",
+  
+  # lat
+  "latitude" = "latitude",
+  "latitude (northward)" = "latitude",
+  "latitude (poleward / northward)" = "latitude",
+  
+  
+  # lon
+  "longitude" = "longitude",
+  
+  
+  # horizontal
+  "horizontal" = "horizontal", # Jorge: I think this is ok
+  "水平方向" = "horizontal", # Nonaka J0202
+  "緯度・経度方向" = "horizontal" # Nonaka J0201 sika: checked and this is based on mesh data so this is horizontal
+  )
+
+gradient_recode %>% unique()
+
+
+
+# ------------ #
+rt3$position %>% unique()
+
+position_recode <- c(
+  
+  # leading edge
+  "leading edge" = "leading edge",
+  "leading" = "leading edge",
+  "northern limit" = "leading edge",
+  "前縁" = "leading edge",
+  
+  # centroid
+  "centroid" = "centroid",
+  "centroid / multiple sites" = "centroid",
+  
+  "average" = "centroid", # Dai E0434 pika: study is about centroid
+  "na" = "centroid", # Nonaka J0202 sika: authors do not mention centroid, but the study area covers entire honshu, shikoku, and kyushu, which largely covers the sika's distribution. so centroid was applied here.
+  
+  # need to check using distribution data, but it will be converted to centroid for now, because it is likely to reflect the centroid
+  "unknown" = "centroid", # Sakiyama E0009
+  
+  # trailing edge
+  "trailing edge" = "trailing edge",
+  "trailing" = "trailing edge",
+  
+  
+  # check
+  "前縁、重心、後縁" = "others" # Nonaka J0201 bird: authors do not mention but this can be interpreted as centroid
+
+
+)
+
+position_recode %>% unique()
+
+
+
+# ------------ #
+rt3$measurement_type %>% unique()
+
+meastype_recode <- c(
+  
+  # abundance
+  "abundance" = "abundance",
+  
+  # occurrence
+  "occurrence" = "occurrence",
+  "在不在" = "occurrence",
+
+  # presence-only: group as occurrence
+  "occurrence (presence-only)" = "occurrence_presonly",
+  
+  
+  
+  # check
+  
+  # density: group as abundance
+  "density from catch data" = "abundance_density",
+  "density from survey" = "abundance_density",
+  
+  # cpue: group as abundance
+  "cpue" = "abundance_cpue",
+  "abundance (cpue)" = "abundance_cpue",
+  
+  # catch: group as abundance
+  "catch landings" = "abundance_catchlandings"
+  )
+
+meastype_recode %>% unique()
+
+
+observation_recode <- c(
+  
+  # abundance
+  "abundance" = "abundance",
+  "abundance_density" = "abundance",
+  "abundance_cpue" = "abundance",
+  "abundance_catchlandings" = "abundance",
+  
+  # occurrence
+  "occurrence" = "occurrence",
+  "occurrence_presonly" = "occurrence"
+  
+  
+)
+
+
+
+
+# ------------ #
+rt3$startperiod_orig %>% unique()
+
+
+
+# ------------ #
+rt3$endperiod_orig %>% unique()
+
+
+
+# ------------ #
+rt3$n_years %>% unique()
+
+
+# ------------ #
+rt3$n_years_midyear %>% unique()
+
+
+
+# ------------ #
+rt3$number_of_censuses %>% unique()
+
+ncensus_recode <- c(
+  
+  # check
+  "na" = "na", # Harsh E0949, E1034, E_har1; Jorge E_jgm1, E1585, E1667, E1991; Fatima E0608
+  
+  "a total of 632 study sites over 16 years (26-59 sites per year)" = "632", # Sueyoshi E2241
+  
+  "the number of specimens recorded was 1312, but the number obtained from the literature was not reported." = "1312" # Sueyoshi E2247
+)
+
+ncensus_recode %>% unique()
+
+
+# ------------ #
+rt3$magnitude_of_shift %>% unique()
+
+# magshift_recode <- c(
+# )
+# 
+# magshift_recode %>% unique()
+
+
+# ------------ #
+rt3$unit_of_shift %>% unique()
+
+# later
+# convert cells with m, km, km/decade to km/year
+
+unitshift_recode <- c(
+  
+  # meter
+  "meter" = "m",
+  "m" = "m",
+  "メートル" = "m",
+  
+  # km
+  "kilometer" = "km",
+  "km" = "km",
+  
+  # km/year
+  "km year-1" = "km/year",
+  "km/year" = "km/year",
+  
+  # km/decade
+  "km per decade" = "km/decade",
+  
+  # degree
+  "degree e" = "degree",
+  "degree n" = "degree",
+  "degrees" = "degree",
+  
+  # degree/year
+  "degree year-1" = "degree/year",
+  "degree/year" = "degree/year",
+  "degrees/year" = "degree/year"
+)
+
+
+
+
+
+# ------------ #
+rt3$azimuth_of_shift %>% unique() %>% sort()
+
+# azimuth_recode <- c(
+#   
+# )
+
+
+
+# ------------ #
+rt3$shift_tested %>% unique() %>% sort()
+
+shifttest_recode <- c(
+  
+  # yes
+  "yes" = "yes",
+  "yes (centroid position)" = "yes",
+  "estimated" = "yes", # Jorge E_jgm2, E1991: tested shift based on significance of coef
+
+  # no
+  "no" = "no")
+
+# ------------ #
+rt3$shift_significant %>% unique() %>% sort()
+
+shiftsign_recode <- c(
+  
+  # yes
+  "yes" = "yes",
+  "yes (supported by consistent results across 6 modeling thresholds, here the magnitude is given based on equate entropy of thresholded and original distribution)" = "yes",
+
+  # no
+  "no" = "no",
+  
+  # na
+  "na" = "na",
+  "no analysis" = "na",
+  "no analyses" = "na"
+  
+)
+
+# ------------ #
+rt3$data_cleaning %>% unique() %>% sort()
+
+dataclean_recode <- c(
+  
+  # yes
+  "yes" = "yes",
+  "yes (the oldest records from each of the 39 regions were used)" =
+    "yes",
+
+  # no
+  "no" = "no",
+  
+  # na
+  "na" = "na"
+  
+  )
+
+dataclean_recode %>% unique()
+
+
+# ------------ #
+rt3$modelling_conducted %>% unique() %>% sort()
+
+# check again
+
+model_recode <- c(
+  
+  # yes
+  "yes" = "yes",
+  
+  "yes\r\n  (centroid shifts were estimated using vector autoregressive spatiotemporal model)" =
+    "yes",
+  
+  # no
+  "no" = "no"
+  )
+
+model_recode %>% unique()
+
+
+# ------------ #
+rt3$other_effects %>% unique() %>% sort()
+
+othereff_recode <- c(
+  
+  # no
+  "no" = "no",
+  
+  # na
+  "na" = "na",
+  
+  # try to phrase in keywords
+  
+  "authors argue that the natural recovery after volcano eruption is the main process of the advancing elevation and discuss that climate change may accelerate this process." =
+    "volcanic recovery",
+  
+  "human activities, species interactions, landuse" =
+    "human activity, species interaction, land use",
+  
+  
+  "①increase in population size ②decrease in snowfall due to global warming" =
+    "population increase, snowfall decrease",
+  
+  "distance from moorland" =
+    "distance from moorland",
+  
+  "species interactions" =
+    "species interaction",
+  
+  "fishery pressure, species interactions" =
+    "fishery pressure, species interaction",
+  
+  "sea current, species interaction, ultraviolet radiation, salinity stress" =
+    "sea current, species interaction, ultraviolet radiation, salinity",
+  
+  "coastal development, deterioration of water quality" =
+    "coastal development, water quality",
+  
+  "pacific decadal oscillation" =
+    "pacific decadal oscillation",
+  
+  "adult dispersal ability, larval feeding range, distribution of food resources" =
+    "dispersal ability, larval feeding, food resources",
+  
+  "land cover changes (increase in forest area due to abandonment of agricultural land)" =
+    "land cover change",
+  
+  "precipitation, elevation, human influence index" =
+    "precipitation, elevation, human influence",
+  
+  "土地利用変化、農地環境変化" =
+    "land use change, agricultural change",
+  
+  "標高、広葉樹林面積、針葉樹林面積、草地面積、田んぼ面積、荒地面積、耕作放棄地面積、人口、道路延長距離、距離、積雪" =
+    "elevation, land cover, population, road length, distance, snow"
+)
+
+
+
+# ------------ #
+rt3$shift_source %>% unique() %>% sort()
+
+shiftsrc_recode <- c(
+  
+  # stated
+  "stated" = "stated",
+  "stated in discussion" = "stated",
+  "yes" = "stated", # 0434: case of northern pika
+
+  # estimated
+  "estimated" = "estimated"
+  )
+
+shiftsrc_recode %>% unique()
+
+
+# ------------ #
+rt3$notes %>% unique()
+
+# notes_recode <- c()
+```
+
+
+```{r}
+# ============================================== #
+# clean dataframe by recoding
+
+rt4 <- rt3 %>% 
+  
+  mutate(
+  
+  # ------------------------------------------------------------------ #
+    # recode categorical columns
+    
+    # study_region = recode(study_region, !!!studyregion_recode),
+    # area_name = recode(area_name, !!!areaname_recode),
+    
+    kingdom = recode(kingdom, !!!kingdom_recode),
+    
+    taxonomic_resolution = recode(
+      taxonomic_resolution,
+      !!!taxres_recode
+    ),
+    
+    # taxonomic_unit = recode(
+    #   taxonomic_unit,
+    #   !!!taxunit_recode
+    # ),
+    
+    taxonomic_unit_revised = recode(
+      taxonomic_unit_revised,
+      !!!taxunitrev_recode
+    ),
+    
+    ecosystem = recode(
+      ecosystem,
+      !!!ecosystem_recode
+    ),
+    
+    realm = recode(
+      ecosystem,
+      !!!realm_recode
+    ),
+    
+    information_source = recode(
+      information_source,
+      !!!infosrc_recode
+    ),
+    
+    gradient = recode(
+      gradient,
+      !!!gradient_recode
+    ),
+    
+    position = recode(
+      position,
+      !!!position_recode
+    ),
+    
+    measurement_type = recode(
+      measurement_type,
+      !!!meastype_recode
+    ),
+    
+    observation = recode(
+      measurement_type,
+      !!!observation_recode
+    ),
+    
+    # n_years = recode(
+    #   n_years,
+    #   !!!nyears_recode
+    # ),
+    
+    number_of_censuses = recode(
+      number_of_censuses,
+      !!!ncensus_recode
+    ),
+    
+    # magnitude_of_shift = recode(
+    #   magnitude_of_shift,
+    #   !!!magshift_recode
+    # ),
+    
+    unit_of_shift = recode(
+      unit_of_shift,
+      !!!unitshift_recode
+    ),
+    
+    # azimuth_of_shift = recode(
+    #   azimuth_of_shift,
+    #   !!!azimuth_recode
+    # ),
+    
+    shift_tested = recode(
+      shift_tested,
+      !!!shifttest_recode
+    ),
+    
+    shift_significant = recode(
+      shift_significant,
+      !!!shiftsign_recode
+    ),
+    
+    data_cleaning = recode(
+      data_cleaning,
+      !!!dataclean_recode
+    ),
+    
+    modelling_conducted = recode(
+      modelling_conducted,
+      !!!model_recode
+    ),
+    
+    other_effects = recode(
+      other_effects,
+      !!!othereff_recode
+    ),
+    
+    shift_source = recode(
+      shift_source,
+      !!!shiftsrc_recode
+    ),
+    
+    # notes = recode(
+    #   notes,
+    #   !!!notes_recode
+    # ),
+    
+    
+    # ------------------------------------------------------------------ #
+    # numeric conversion
+    
+    number_of_censuses = na_if(number_of_censuses, "na"),
+    number_of_censuses = as.numeric(number_of_censuses),
+    
+    magnitude_of_shift = na_if(magnitude_of_shift, "na"),
+    magnitude_of_shift = as.numeric(magnitude_of_shift)
+    
+  ) %>% 
+  relocate(realm, .after = "ecosystem") %>% 
+  relocate(observation, .after = "measurement_type") %>% 
+  
+  # ecosystem order
+  mutate(
+    
+    # check entry with ecosystem_recode %>% unique()
+    
+    ecosystem = factor(
+      ecosystem,
+      levels = c(
+        "alpine",
+        "forest",
+        "grassland",
+        "wetland",
+        "terrestrial",
+        "marine"
+      )
+    ),
+    realm = factor(
+      realm,
+      levels = c(
+        "terrestrial",
+        "marine"
+        )
+    ),
+    gradient = factor(
+      gradient,
+      levels = c(
+        "elevation",
+        "latitude",
+        "longitude",
+        "horizontal")
+    )
+  ) %>% 
+  
+  left_join(ref_bind2 %>% select(-language),
+            by = "reference_no")
+```
+
+
+```{r}
+# ============================================== #
+# finally edit unit
+
+
+# ------------ #
+# check combination of gradient and unit
+rt4 %>%
+  distinct(gradient, unit_of_shift) %>%
+  arrange(gradient, unit_of_shift)
+
+
+
+
+# ------------ #
+# conversion from latitude degrees to km
+latdeg_to_km <- function(deg) {
+  earth_radius <- 6371
+  deg * 2 * pi * earth_radius / 360
+}
+
+# ---- #
+# example 
+
+latdeg_to_km(0.1)
+# ---- #
+
+
+
+# ------------ #
+# conversion from longitude degrees to km
+londeg_to_km <- function(deg, latitude) {
+  earth_radius <- 6371
+  deg * 2 * pi * earth_radius / 360 * cos(latitude * pi / 180)
+}
+
+# ---- #
+# example
+
+londeg_to_km(1, latitude = 36)
+londeg_to_km(1, latitude = 46)
+# ---- #
+
+# lat mean for longitude studies
+lon_latrange2 <- lon_latrange %>% 
+  rename_with(~ .x %>%
+                str_replace_all(" ", "_") %>%
+                str_to_lower()) %>% 
+  # convert text to lower (except specified columns)
+  mutate(gradient = str_to_lower(gradient)) %>% 
+  filter(include == 1) %>% 
+  rowwise() %>% 
+  mutate(lat_mean = mean(lat_min, lat_max)) %>% 
+  select(reference_no, gradient, lat_mean)
+  
+
+
+
+
+
+
+# ------------ #
+rt5 <- rt4 %>% 
+  
+  left_join(lon_latrange2, 
+            by = c("reference_no", "gradient")) %>% 
+  
+  # transform magnitudeshift and unitshift
+  mutate(
+    
+    magnitude_of_shift = case_when(
+      
+      # apply these to magnitudeshift depending on
+      # gradient
+      # unitshift
+      
+      
+      # ------------------------------------------------------
+      # elevation --> m/year
+      # ------------------------------------------------------
+      
+      # m --> m/year
+      gradient == "elevation" & unit_of_shift == "m" ~
+        magnitude_of_shift / n_years_midyear,
+      
+      
+      # ------------------------------------------------------
+      # latitude --> km/year
+      # ------------------------------------------------------
+      
+      # degree --> km --> km/year
+      gradient == "latitude" & unit_of_shift == "degree" ~
+        latdeg_to_km(magnitude_of_shift) / n_years_midyear,
+      
+      # degree/year --> km/year
+      gradient == "latitude" & unit_of_shift == "degree/year" ~
+        latdeg_to_km(magnitude_of_shift),
+      
+      # km --> km/year
+      gradient == "latitude" & unit_of_shift == "km" ~
+        magnitude_of_shift / n_years_midyear,
+      
+      # already km/year
+      gradient == "latitude" & unit_of_shift == "km/year" ~
+        magnitude_of_shift,
+      
+      
+      # ------------------------------------------------------
+      # longitude --> km/year
+      # ------------------------------------------------------
+      
+      # degree --> km --> km/year
+      gradient == "longitude" & unit_of_shift == "degree" ~
+        londeg_to_km(magnitude_of_shift, latitude = lat_mean) / n_years_midyear,
+      
+      # degree/year --> km/year
+      gradient == "longitude" & unit_of_shift == "degree/year" ~
+        londeg_to_km(magnitude_of_shift, latitude = lat_mean),
+      
+      
+      
+      # ------------------------------------------------------
+      # horizontal --> km/year
+      # ------------------------------------------------------
+      
+      # km --> km/year
+      gradient == "horizontal" & unit_of_shift == "km" ~
+        magnitude_of_shift / n_years_midyear,
+      
+      # already km/year
+      gradient == "horizontal" & unit_of_shift == "km/year" ~
+        magnitude_of_shift,
+      
+      
+      # anything unexpected
+      TRUE ~ NA_real_
+
+    ),
+    
+    unit_of_shift = case_when(
+      gradient == "elevation" ~ "m/year",
+      gradient %in% c("latitude", "longitude", "horizontal") ~ "km/year",
+      TRUE ~ NA_character_
+      )
+    )
+
+
+
+# ------------ #
+# check combination of gradient and unit
+rt5 %>%
+  distinct(gradient, unit_of_shift) %>%
+  arrange(gradient, unit_of_shift)
+
+
+
+rt_cleaned <- rt5
+
+
+
+# ------------ #
+# save
+
+readr::write_csv(
+  rt_cleaned,
+  fs::path(dir_out, "rt_cleaned.csv")
+)
+
+```
+
+
+# Check cleaned data
+
+```{r}
+# ============================================== #
+# check: show unique values for each column
+
+nrow(rt_cleaned)
+
+for (nm in names(rt_cleaned)) {
+  vals <- unique(rt_cleaned[[nm]])
+  
+  cat("\n====================\n")
+  cat("Column:", nm, "\n")
+  cat("n_unique:", length(vals), "\n")
+  cat("====================\n")
+  
+  print(vals)
+  
+}
+
+
+# check entries for shift_signif when shift_tested == yes
+rt_cleaned %>%
+  filter(shift_tested == "yes") %>%
+  pull(shift_significant) %>%
+  unique()
+
+
+
+```
+
+
+
+# Visualize
+
+```{r}
+#| fig-width: 12
+#| fig-height: 6
+
+
+# glimpse(rt_cleaned)
+
+# ============================================== #
+# bar plot: count number of studies
+
+rt_temp <- rt_cleaned %>%
+  filter(!is.na(magnitude_of_shift)) %>%
+  distinct(realm, ecosystem, language, reference_no) %>%
+  count(realm, ecosystem, language, name = "n_studies")
+
+rt_temp 
+
+
+
+```
+
+
+```{r}
+#| fig-width: 12
+#| fig-height: 6
+
+# ============================================== #
+# bar plot: count rows per ecosystem x x gradient
+
+rt_temp <- rt_cleaned %>%
+  
+  filter(
+    !is.na(magnitude_of_shift)
+  ) %>%
+  
+  count(
+    gradient,
+    ecosystem,
+    realm
+  )
+
+ggplot(rt_temp, aes(x = realm, y = n, fill = ecosystem)) +
+  geom_col(position = "stack") +
+  facet_grid2(
+    . ~ gradient,
+    scales = "free_x",
+    independent = "x"
+  ) +
+  labs(
+    x = "Realm",
+    y = "Number of observations",
+    fill = "Ecosystem",
+    title = "Number of observations per gradient",
+  ) +
+  theme_bw(base_size = 16) +
+  theme(
+    legend.position = "top",
+    axis.text.x = element_text(angle = 30, hjust = 1)
+  )
+
+
+
+
+
+
+```
+
+
+
+## Gantt chart-like plot
+
+### 1: row height varies with sample size
+
+```{r}
+#| fig-width: 10
+#| fig-height: 8
+
+
+# ============================================== #
+# Gantt chart-like plot of study duration per observation
+
+rt_temp <- rt_cleaned %>%
+  
+  filter(
+    !is.na(startperiod_midyear),
+    !is.na(endperiod_midyear)
+  ) %>%
+  
+  group_by(realm, publication_id) %>%
+  mutate(
+    publication_start = min(startperiod_midyear, na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  
+  arrange(
+    realm,
+    publication_start,
+    publication_id,
+    startperiod_midyear,
+    endperiod_midyear
+  ) %>%
+  
+  # publication legend follows arranged order
+  mutate(
+    publication_id = factor(
+      publication_id,
+      levels = unique(publication_id)
+    ),
+    
+    # unique observation ID across whole dataset
+    obs_id = row_number()
+  )%>%
+  mutate(
+    census_linetype = case_when(
+      number_of_censuses == 2 ~ "2 censuses",
+      TRUE ~ ">2 censuses"
+    )
+  )
+
+
+n_pub <- nlevels(rt_temp$publication_id)
+
+publication_colors <- colorspace::qualitative_hcl(
+  n_pub,
+  palette = "Dark 3"
+)
+
+publication_colors <- publication_colors[
+  c(
+    seq(1, n_pub, by = 2),
+    seq(2, n_pub, by = 2)
+  )
+]
+
+
+class(rt_temp$obs_id)
+
+
+ggplot(rt_temp, aes(y = obs_id, color = publication_id)) +
+  geom_segment(
+    aes(
+      x = startperiod_midyear,
+      xend = endperiod_midyear,
+      yend = obs_id,
+      linetype = census_linetype
+    ),
+    linewidth = 1,
+    alpha = 1
+  ) +
+  geom_segment(
+    aes(
+      x = startperiod_midyear,
+      xend = startperiod_midyear+1,
+      yend = obs_id
+    ),
+    color = "black",
+    linewidth = 1,
+    alpha = 1
+  ) +
+  geom_segment(
+    aes(
+      x = endperiod_midyear-1,
+      xend = endperiod_midyear,
+      yend = obs_id
+    ),
+    color = "black",
+    linewidth = 1,
+    alpha = 1
+  ) +
+  # geom_errorbar(
+  #   aes(
+  #     y = obs_id,
+  #     xmin = startperiod_midyear,
+  #     xmax = endperiod_midyear,
+  #     linetype = census_linetype
+  #   ),
+  #   width = 0.3,
+  #   linewidth = 1,
+  #   orientation = "y",
+  #   alpha = 1
+  # ) +
+  geom_text(
+    aes(
+      x = endperiod_midyear,
+      label = number_of_censuses
+    ),
+    hjust = -0.3,
+    color = "black",
+    size = 3.5
+  ) +
+  scale_linetype_manual(
+    values = c(
+      "2 censuses" = "dotted",
+      ">2 censuses" = "solid"
+    )
+  ) +
+  # geom_point(
+  #   aes(x = startperiod_midyear),
+  #   size = 2,
+  #   alpha = 1
+  # ) +
+  # geom_point(
+  #   aes(x = endperiod_midyear),
+  #   size = 2,
+  #   alpha = 1
+  # ) +
+  
+  facet_grid2(
+    rows = vars(realm),
+    scales = "free_y",
+    space = "free_y",
+    switch = "y"
+  ) +
+  
+  scale_x_continuous(
+    expand = expansion(mult = c(0.02, 0.1))
+  ) +
+  
+  scale_y_reverse() +
+  
+  scale_color_manual(
+    values = publication_colors
+  ) +
+  
+  labs(
+    x = "Year",
+    y = "Observation",
+    color = "Reference no",
+    title = "Years between the original survey and resurvey"
+  ) +
+  
+  guides(
+    color = guide_legend(ncol = 1)
+  ) +
+  
+  theme_bw(base_size = 16) +
+  theme(
+    legend.position = "right",
+    strip.placement = "outside",
+    strip.text.y.left = element_text(angle = 0),
+    strip.background = element_rect(fill = "grey90"),
+    plot.title = element_text(hjust = 0),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+
+
+```
+
+
+### 2: row height is fixed regardless of sample size
+
+```{r}
+#| fig-width: 10
+#| fig-height: 8
+
+# ============================================== #
+# Gantt chart-like plot of study duration per observation
+#
+# Equal vertical height for:
+#   1. each realm
+#   2. each reference within each realm
+
+
+rt_temp <- rt_cleaned %>%
+  
+  filter(
+    !is.na(startperiod_midyear),
+    !is.na(endperiod_midyear)
+  ) %>%
+  
+  
+  # ---------------------------------------------- #
+  # First year represented by each publication
+  
+  group_by(realm, publication_id) %>%
+  mutate(
+    publication_start = min(
+      startperiod_midyear,
+      na.rm = TRUE
+    )
+  ) %>%
+  ungroup() %>%
+  
+  
+  # ---------------------------------------------- #
+  # Arrange publications and observations
+  
+  arrange(
+    realm,
+    publication_start,
+    publication_id,
+    startperiod_midyear,
+    endperiod_midyear
+  ) %>%
+  
+  
+  # ---------------------------------------------- #
+  # Publication factor follows arranged order
+  
+  mutate(
+    publication_id = factor(
+      publication_id,
+      levels = unique(publication_id)
+    )
+  ) %>%
+  
+  
+  # ============================================== #
+  # Give each reference an equal-height band
+  # within each realm
+  
+  group_by(realm) %>%
+  mutate(
+    
+    # reference order within realm
+    reference_order = match(
+      publication_id,
+      unique(publication_id)
+    ),
+    
+    # number of references in realm
+    n_ref_realm = n_distinct(publication_id)
+    
+  ) %>%
+  ungroup() %>%
+  
+  
+  # ---------------------------------------------- #
+  # Give each observation a position within
+  # its reference band
+  
+  group_by(realm, publication_id) %>%
+  mutate(
+    
+    n_entry = n(),
+    obs_order = row_number(),
+    
+    # center of this reference's band
+    reference_center = (
+      reference_order - 0.5
+    ) / n_ref_realm,
+    
+    # total vertical height available
+    # to this reference
+    reference_height = 1 / n_ref_realm,
+    
+    # observation positions within reference band
+    #
+    # observations occupy 70% of the available
+    # reference band (±35% around the center)
+    obs_offset = if (n() == 1) {
+      
+      0
+      
+    } else {
+      
+      (
+        (obs_order - 1) / (n_entry - 1) - 0.5
+      ) * 0.7 * first(reference_height)
+      
+    },
+    
+    # final y position
+    obs_y = reference_center + obs_offset
+    
+  ) %>%
+  
+  ungroup() %>%
+  
+  mutate(
+    realm = factor(
+      realm,
+      levels = c("terrestrial", "marine"),
+      labels = c("Terrestrial", "Marine")
+    ),
+    census_linetype = case_when(
+      number_of_censuses == 2 ~ "2 censuses",
+      TRUE ~ ">2 censuses"
+    )
+  )
+
+
+# ============================================== #
+# Reference labels
+#
+# Because each reference now has its own
+# equal-height band, simply use reference_center
+# as the label position.
+
+
+publication_labels <- rt_temp %>%
+  
+  group_by(
+    realm,
+    publication_id
+  ) %>%
+  
+  summarise(
+    label_y = first(reference_center),
+    n_entry = n(),
+    .groups = "drop"
+  ) %>%
+  
+  mutate(
+    publication_label = as.character(publication_id),
+    
+    publication_label = case_when(
+      
+      # References containing "et al."
+      stringr::str_detect(publication_label, " et al\\. ") ~
+        stringr::str_replace(
+          publication_label,
+          "^(.*?) et al\\. (.*)$",
+          "'\\1 '*italic('et al.')*' \\2'"
+        ),
+      
+      # References without "et al."
+      TRUE ~ paste0(
+        "'",
+        publication_label,
+        "'"
+      )
+    ),
+    
+    # Add italic (n = x)
+    publication_label = paste0(
+      publication_label,
+      "*' ('*italic(n == ",
+      n_entry,
+      ")*')'"
+    )
+  )
+
+
+# ============================================== #
+# Publication colors
+
+
+n_pub <- nlevels(rt_temp$publication_id)
+
+publication_colors <- colorspace::qualitative_hcl(
+  n_pub,
+  palette = "Dark 3"
+)
+
+publication_colors <- publication_colors[
+  c(
+    seq(1, n_pub, by = 2),
+    seq(2, n_pub, by = 2)
+  )
+]
+
+
+# ============================================== #
+# Plot
+
+
+ggplot(
+  rt_temp,
+  aes(
+    y = obs_y,
+    color = publication_id
+  )
+) +
+  
+  # ---------------------------------------------- #
+  # Study period
+  
+  geom_segment(
+    aes(
+      x = startperiod_midyear,
+      xend = endperiod_midyear,
+      yend = obs_y,
+      linetype = census_linetype
+    ),
+    linewidth = 1,
+    alpha = 1
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # Plus sign at first survey year
+  
+  geom_text(
+    aes(
+      x = startperiod_midyear,
+      y = obs_y
+    ),
+    label = "+",
+    color = "black",
+    size = 4,
+    vjust = 0.35,
+    show.legend = FALSE
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # Plus sign at final survey year
+  
+  geom_text(
+    aes(
+      x = endperiod_midyear,
+      y = obs_y
+    ),
+    label = "+",
+    color = "black",
+    size = 4,
+    vjust = 0.35,
+    show.legend = FALSE
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # Reference labels
+  
+  geom_text(
+    data = publication_labels,
+    aes(
+      x = -Inf,
+      y = label_y,
+      label = publication_label
+    ),
+    inherit.aes = FALSE,
+    parse = TRUE,
+    hjust = 1.05,
+    size = 3.5
+  ) +
+  
+  
+  # ============================================== #
+  # Scales
+  
+  scale_linetype_manual(
+    values = c(
+      "2 censuses" = "longdash",
+      ">2 censuses" = "solid"
+    )
+  ) +
+  
+  scale_color_manual(
+    values = publication_colors
+  ) +
+  
+  scale_x_continuous(
+    expand = expansion(
+      mult = c(0.02, 0.02)
+    )
+  ) +
+  
+  scale_y_reverse(
+    limits = c(1.02, -0.02),
+    expand = c(0, 0)
+  ) +
+  
+  
+  # ============================================== #
+  # Equal-height realm facets
+  
+  facet_grid2(
+    rows = vars(realm),
+    scales = "fixed",
+    space = "fixed"
+  ) +
+  
+  
+  coord_cartesian(
+    clip = "off"
+  ) +
+  
+  
+  labs(
+    x = "Year of record",
+    y = NULL
+  ) +
+  
+  
+  guides(
+    color = "none",
+    linetype = "none"
+  ) +
+  
+  
+  theme_bw(base_size = 16) +
+  
+  theme(
+    legend.position = "none",
+    
+    strip.placement = "outside",
+    strip.text.y.right = element_text(angle = 0),
+    strip.background = element_rect(fill = "grey90"),
+    
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    
+    # remove y-axis grid lines
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    
+    panel.spacing.y = unit(0.15, "lines"),
+    
+    plot.margin = margin(
+      t = 5.5,
+      r = 5.5,
+      b = 5.5,
+      l = 150
+    )
+  )
+
+
+
+```
+
+
+### 3: row height is fixed regardless of sample size, start-start to end-end
+
+```{r}
+#| fig-width: 10
+#| fig-height: 8
+
+# ============================================== #
+# Gantt chart-like plot of study duration per observation
+#
+# Equal vertical height for:
+#   1. each realm
+#   2. each reference within each realm
+
+
+rt_temp <- rt_cleaned %>%
+  
+  filter(
+    !is.na(startperiod_startyear),
+    !is.na(endperiod_endyear)
+  ) %>%
+  
+  
+  # ---------------------------------------------- #
+  # First year represented by each publication
+  
+  group_by(realm, publication_id) %>%
+  mutate(
+    publication_start = min(
+      startperiod_startyear,
+      na.rm = TRUE
+    )
+  ) %>%
+  ungroup() %>%
+  
+  
+  # ---------------------------------------------- #
+  # Arrange publications and observations
+  
+  arrange(
+    realm,
+    publication_start,
+    publication_id,
+    startperiod_startyear,
+    endperiod_endyear
+  ) %>%
+  
+  
+  # ---------------------------------------------- #
+  # Publication factor follows arranged order
+  
+  mutate(
+    publication_id = factor(
+      publication_id,
+      levels = unique(publication_id)
+    )
+  ) %>%
+  
+  
+  # ============================================== #
+  # Give each reference an equal-height band
+  # within each realm
+  
+  group_by(realm) %>%
+  mutate(
+    
+    # reference order within realm
+    reference_order = match(
+      publication_id,
+      unique(publication_id)
+    ),
+    
+    # number of references in realm
+    n_ref_realm = n_distinct(publication_id)
+    
+  ) %>%
+  ungroup() %>%
+  
+  
+  # ---------------------------------------------- #
+  # Give each observation a position within
+  # its reference band
+  
+  group_by(realm, publication_id) %>%
+  mutate(
+    
+    n_entry = n(),
+    obs_order = row_number(),
+    
+    # center of this reference's band
+    reference_center = (
+      reference_order - 0.5
+    ) / n_ref_realm,
+    
+    # total vertical height available
+    # to this reference
+    reference_height = 1 / n_ref_realm,
+    
+    # observation positions within reference band
+    #
+    # observations occupy 70% of the available
+    # reference band (±35% around the center)
+    obs_offset = if (n() == 1) {
+      
+      0
+      
+    } else {
+      
+      (
+        (obs_order - 1) / (n_entry - 1) - 0.5
+      ) * 0.7 * first(reference_height)
+      
+    },
+    
+    # final y position
+    obs_y = reference_center + obs_offset
+    
+  ) %>%
+  
+  ungroup() %>%
+  
+  mutate(
+    realm = factor(
+      realm,
+      levels = c("terrestrial", "marine"),
+      labels = c("Terrestrial", "Marine")
+    ),
+    census_linetype = case_when(
+      number_of_censuses == 2 ~ "2 censuses",
+      TRUE ~ ">2 censuses"
+    )
+  )
+
+
+# ============================================== #
+# Reference labels
+#
+# Because each reference now has its own
+# equal-height band, simply use reference_center
+# as the label position.
+
+
+publication_labels <- rt_temp %>%
+  
+  group_by(
+    realm,
+    publication_id
+  ) %>%
+  
+  summarise(
+    label_y = first(reference_center),
+    n_entry = n(),
+    .groups = "drop"
+  ) %>%
+  
+  mutate(
+    publication_label = as.character(publication_id),
+    
+    publication_label = case_when(
+      
+      # References containing "et al."
+      stringr::str_detect(publication_label, " et al\\. ") ~
+        stringr::str_replace(
+          publication_label,
+          "^(.*?) et al\\. (.*)$",
+          "'\\1 '*italic('et al.')*' \\2'"
+        ),
+      
+      # References without "et al."
+      TRUE ~ paste0(
+        "'",
+        publication_label,
+        "'"
+      )
+    ),
+    
+    # Add italic (n = x)
+    publication_label = paste0(
+      publication_label,
+      "*' ('*italic(n == ",
+      n_entry,
+      ")*')'"
+    )
+  )
+
+
+# ============================================== #
+# Publication colors
+
+
+n_pub <- nlevels(rt_temp$publication_id)
+
+publication_colors <- colorspace::qualitative_hcl(
+  n_pub,
+  palette = "Dark 3"
+)
+
+publication_colors <- publication_colors[
+  c(
+    seq(1, n_pub, by = 2),
+    seq(2, n_pub, by = 2)
+  )
+]
+
+
+# ============================================== #
+# Plot
+
+
+ggplot(
+  rt_temp,
+  aes(
+    y = obs_y,
+    color = publication_id
+  )
+) +
+  
+  # ---------------------------------------------- #
+  # Study period
+  
+  geom_segment(
+    aes(
+      x = startperiod_startyear,
+      xend = endperiod_endyear,
+      yend = obs_y,
+      linetype = census_linetype
+    ),
+    linewidth = 1,
+    alpha = 1
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # Plus sign at first survey year
+  
+  geom_text(
+    aes(
+      x = startperiod_startyear,
+      y = obs_y
+    ),
+    label = "+",
+    color = "black",
+    size = 4,
+    vjust = 0.35,
+    show.legend = FALSE
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # Plus sign at final survey year
+  
+  geom_text(
+    aes(
+      x = endperiod_endyear,
+      y = obs_y
+    ),
+    label = "+",
+    color = "black",
+    size = 4,
+    vjust = 0.35,
+    show.legend = FALSE
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # Reference labels
+  
+  geom_text(
+    data = publication_labels,
+    aes(
+      x = -Inf,
+      y = label_y,
+      label = publication_label
+    ),
+    inherit.aes = FALSE,
+    parse = TRUE,
+    hjust = 1.05,
+    size = 3.5
+  ) +
+  
+  
+  # ============================================== #
+  # Scales
+  
+  scale_linetype_manual(
+    values = c(
+      "2 censuses" = "longdash",
+      ">2 censuses" = "solid"
+    )
+  ) +
+  
+  scale_color_manual(
+    values = publication_colors
+  ) +
+  
+  scale_x_continuous(
+    expand = expansion(
+      mult = c(0.02, 0.02)
+    )
+  ) +
+  
+  scale_y_reverse(
+    limits = c(1.02, -0.02),
+    expand = c(0, 0)
+  ) +
+  
+  
+  # ============================================== #
+  # Equal-height realm facets
+  
+  facet_grid2(
+    rows = vars(realm),
+    scales = "fixed",
+    space = "fixed"
+  ) +
+  
+  
+  coord_cartesian(
+    clip = "off"
+  ) +
+  
+  
+  labs(
+    x = "Year of record",
+    y = NULL
+  ) +
+  
+  
+  guides(
+    color = "none",
+    linetype = "none"
+  ) +
+  
+  
+  theme_bw(base_size = 16) +
+  
+  theme(
+    legend.position = "none",
+    
+    strip.placement = "outside",
+    strip.text.y.right = element_text(angle = 0),
+    strip.background = element_rect(fill = "grey90"),
+    
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    
+    # remove y-axis grid lines
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    
+    panel.spacing.y = unit(0.15, "lines"),
+    
+    plot.margin = margin(
+      t = 5.5,
+      r = 5.5,
+      b = 5.5,
+      l = 150
+    )
+  )
+
+
+
+```
+
+
+
+```{r}
+#| fig-width: 12
+#| fig-height: 12
+
+
+# ============================================== #
+# bar plot: count rows per ecosystem x gradient x position
+
+rt_temp <- rt_cleaned %>%
+  count(
+    gradient,
+    ecosystem,
+    position,
+    realm
+  )
+
+
+p <- ggplot(
+  rt_temp,
+  aes(
+    x = ecosystem,
+    y = n,
+    fill = realm
+  )
+) +
+  
+  geom_col(position = "stack") +
+  
+  facet_grid2(
+    position ~ gradient,
+    scales = "free_x",
+    independent = "x"
+  ) +
+  
+  labs(
+    x = "Ecosystem",
+    y = "Number of observations",
+    fill = "Realm",
+    title = "Number of observations per gradient per position"
+  ) +
+  
+  theme_bw(base_size = 16) +
+  
+  theme(
+    axis.text.x = element_text(
+      angle = 30,
+      hjust = 1
+    )
+  )
+
+suppressWarnings(print(p))
+```
+
+
+
+```{r}
+#| fig-width: 10
+#| fig-height: 5
+
+
+# ============================================== #
+# boxplot per ecosystem x magnitude x gradient
+
+# convert to numeric (safe)
+rt_temp <- rt_cleaned %>%
+  filter(
+    gradient != "na",
+    !is.na(magnitude_of_shift)
+  ) %>%
+  arrange(publication_year, publication_id) %>%
+  mutate(
+    publication_id = factor(
+      publication_id,
+      levels = unique(publication_id)
+    )
+  )
+
+
+ggplot(rt_temp, aes(x = realm, y = magnitude_of_shift)) +
+  
+  # horizontal reference line
+  geom_hline(
+    yintercept = 0,
+    color = "black",
+    linewidth = 0.6
+  ) +
+  # geom_boxplot(
+  #   fill = "grey70",
+  #   color = "black",
+  #   outlier.shape = NA
+  # ) +
+  geom_jitter(
+    aes(color = publication_id),
+    width = 0.2,
+    alpha = 0.8
+  ) +
+  facet_grid2(
+    . ~ gradient,
+    scales = "free",
+    independent = "y"
+  ) +
+  labs(
+    x = "Realm",
+    y = "Magnitude of shift",
+    color = "Reference no",
+    title = "Shift magnitude across realms and gradients"
+  ) +
+  theme_bw(base_size = 16) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
+
+
+```{r}
+#| fig-width: 10
+#| fig-height: 5
+
+# ============================================== #
+# bar plot: count rows per ecosystem x shift_tested x gradient
+
+rt_temp <- rt_cleaned %>%
+  filter(gradient != "na") %>%
+  count(
+    gradient,
+    realm,
+    shift_tested,
+    realm
+  )
+
+
+ggplot(
+  rt_temp,
+  aes(
+    x = realm,
+    y = n,
+    fill = shift_tested
+  )
+) +
+  geom_col(position = "stack") +
+  facet_grid2(
+    . ~ gradient,
+    scales = "free_x",
+    independent = "x"
+  ) +
+  labs(
+    x = "Realm",
+    y = "Number of observations",
+    fill = "Shift tested"
+  ) +
+  theme_bw(base_size = 16) +
+  theme(
+    axis.text.x = element_text(
+      angle = 30,
+      hjust = 1
+    )
+  )
+```
+
+
+```{r}
+#| fig-width: 10
+#| fig-height: 5
+
+
+# ============================================== #
+# bar plot: count rows per ecosystem x shift_significant x gradient
+
+rt_temp <- rt_cleaned %>%
+  filter(
+    gradient != "na",
+    shift_tested == "yes"
+  ) %>%
+  count(
+    gradient,
+    realm,
+    shift_significant,
+    realm
+  )
+
+
+ggplot(
+  rt_temp,
+  aes(
+    x = realm,
+    y = n,
+    fill = shift_significant
+  )
+) +
+  geom_col(position = "stack") +
+  facet_grid2(
+    . ~ gradient,
+    scales = "free_x",
+    independent = "x"
+  ) +
+  labs(
+    x = "Realm",
+    y = "Number of observations",
+    fill = "Shift significant"
+  ) +
+  theme_bw(base_size = 16) +
+  theme(
+    axis.text.x = element_text(
+      angle = 30,
+      hjust = 1
+    )
+  )
+
+
+
+
+
+
+```
+
+
+
+
+
+# Session info
+
+```{r}
+#| label: session-info
+
+sessioninfo::session_info()
+```
+
+```{r}
+#| label: run-info
+#| echo: false
+
+time_end <- Sys.time()
+elapsed_sec <- as.numeric(difftime(time_end, time_start, units = "secs"))
+elapsed_min <- as.numeric(difftime(time_end, time_start, units = "mins"))
+
+readr::write_lines(
+  c(
+    paste("rendered_at:", Sys.time()),
+    paste("input_file:", in1),
+    paste("input_file:", in2),
+    paste("output_dir:", dir_out),
+    paste("run_time_seconds:", round(elapsed_sec, 1)),
+    paste("run_time_minutes:", round(elapsed_min, 2))),
+  file.path(dir_out, "run_info.txt")
+)
+```
