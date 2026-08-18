@@ -1,0 +1,6 @@
+rendered_at: 2026-08-18 14:45:53.020953
+input_file: C:/Users/wisdo/Dropbox/02_proj_cloud/_localrepo/er_review_grp/data/polygon
+input_file: 
+output_dir: C:/Users/wisdo/Dropbox/02_proj_cloud/_localrepo/er_review_grp/output/create_static_map/20260818-144443
+run_time_seconds: 67.5
+run_time_minutes: 1.12
