@@ -1,0 +1,17 @@
+
+# RStudio project files
+*.Rproj
+
+# RStudio settings folder
+.Rproj.user/
+
+# R session files
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata.
+
+
+# others
+output/*
+
