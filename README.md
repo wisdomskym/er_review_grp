@@ -1,6 +1,6 @@
-# Title
+# er_review_grp  
 
-Short one-sentence description of the project.
+Repository for summarizing range shift observations reported in literature.
 
 ------------------------------------------------------------------------
 
