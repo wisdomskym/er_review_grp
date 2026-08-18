@@ -1,0 +1,407 @@
+---
+title: "create_leaflet_map"
+author: "tksym"
+date: today
+params:
+  in1: null
+  in2: null
+  dir_out: null
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    toc-location: right
+    fig-format: png
+    embed-resources: true
+    self-contained-math: true
+    code-fold: true
+    code-overflow: wrap
+  pdf:
+    toc: false
+editor: 
+  mode: source
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+knitr::opts_chunk$set(
+  fig.width = 16,
+  fig.height = 9,
+  dpi = 120,
+  out.width = "100%",
+  fig.align = "center",
+  cache = FALSE
+)
+
+time_start <- Sys.time()
+```
+
+```{r}
+#| label: packages
+#| 
+pacman::p_load(
+  # data import
+  here,
+  fs,
+  readxl,
+  
+  # data manipulation
+  tidyverse,
+  
+  # gis,
+  sf,
+  
+  # map
+  leaflet,
+  htmltools,
+  
+  # misc
+  tictoc,
+  sessioninfo,
+  report
+)
+
+
+```
+
+```{r}
+#| label: othersettings
+#| include: false
+
+# assign from outside
+in1 <- params$in1
+in2 <- params$in2
+dir_out <- params$dir_out
+
+
+```
+
+# WORK FLOW
+
+- Import data
+
+- Edit data
+
+- Visualize
+
+- Export
+
+# DATA
+
+Table data: `{r} fs::path_rel(in1)`
+
+Polygon directory: `{r} fs::path_rel(in2)`
+
+Output directory: `{r} fs::path_rel(dir_out)`
+
+
+
+# Import
+
+```{r}
+
+# ============================================== #
+# table data
+studyarea <- read_xlsx(in1, sheet = "20260817_studyarea")
+
+
+
+
+
+# ============================================== #
+# import polygon
+
+# list all shapefiles
+shp_files <- list.files(
+  in2,
+  pattern = "\\.shp$",
+  full.names = TRUE, 
+  recursive = FALSE
+)
+
+
+# view file names
+basename(shp_files)
+
+# read all shapefiles
+shp_list <- shp_files |>
+  setNames(tools::file_path_sans_ext(basename(shp_files))) |>
+  map(read_sf)
+
+
+
+# ============================================== #
+# import cleaned reviewdata table
+
+rt_cleaned <- readr::read_csv(
+  here("result", "reviewtable_organize", "rt_cleaned.csv")
+)
+
+
+```
+
+
+
+
+# Basic flow
+
+```{r}
+
+names(shp_list)
+names(shp_list)[1]
+plot(shp_list[[1]])
+
+# ============================================== #
+# map on leaflet
+
+m_example <- leaflet() %>%
+  addTiles() %>% # Add default OpenStreetMap map tiles
+  setView(lng = 138.040, lat = 36.140, zoom = 4) %>% 
+  addMarkers(lng = 141.34144193866803, lat = 43.070559674088784, 
+             popup = "Hokudai") %>% 
+  addPolygons(data = shp_list[[1]], 
+              color = "blue", stroke = 0.1, opacity = 0.8,
+              popup = names(shp_list)[1]) %>% 
+  addPolygons(data = shp_list[[2]], 
+              color = "darkgreen", stroke = 0.1, opacity = 0.8,
+              popup = names(shp_list)[2])
+
+
+
+# ============================================== #
+# export as self contained html
+
+htmlwidgets::saveWidget(
+  m_example,
+  file = here(dir_out, "map_example_selfcont.html"),
+  selfcontained = TRUE
+)
+
+
+```
+
+
+
+
+# Edit data
+
+```{r}
+
+# names(shp_list)
+# names(shp_list)[1]
+# plot(shp_list[[1]])
+
+# ============================================== #
+# edit reviewtable data
+
+rt_distinct <- rt_cleaned %>% 
+  distinct(reference_no, publication_id)
+
+
+
+# ============================================== #
+# filter out notuse data
+# match table data with polygon data
+
+studyarea2 <- studyarea %>%
+  filter(memo == "use") %>%
+  left_join(rt_distinct,
+            by = "reference_no") %>% 
+  mutate(
+    shp_name = tools::file_path_sans_ext(file_final),
+    shp = shp_list[shp_name]
+  )
+
+
+
+# ============================================== #
+# prepare polygon data for leaflet
+
+studyarea_cleaned <- studyarea2 %>%
+  group_by(shp_name) %>%
+  summarise(
+    realm = first(realm),
+    reference_no = paste(
+      sort(unique(reference_no)),
+      collapse = "<br>"
+    ),
+    publication_id = paste(
+      sort(unique(publication_id)),
+      collapse = "<br>"
+    ),
+    shp = list(shp[[1]]),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    area = purrr::map_dbl(
+      shp,
+      ~ as.numeric(sum(sf::st_area(.x)))
+    )
+  ) %>%
+  arrange(desc(area)) %>%
+  
+  # assign colors separately within each realm
+  group_by(realm) %>%
+  mutate(
+    color = case_when(
+      realm == "marine" ~ grDevices::hcl.colors(
+        n(),
+        palette = "Blues 3"
+      ),
+      realm == "terrestrial" ~ grDevices::hcl.colors(
+        n(),
+        palette = "YlOrRd"
+      )
+      
+      # realm == "marine" ~ grDevices::hcl.colors(
+      #   n(),
+      #   palette = "BluGrn"
+      # ),
+      # 
+      # realm == "terrestrial" ~ grDevices::hcl.colors(
+      #   n(),
+      #   palette = "OrRd"
+      # )
+    )
+  ) %>%
+  ungroup()
+
+
+
+# ============================================== #
+# export polygon color codes
+
+# non-expanded:
+# one row per polygon, publication_ids combined with <br>
+studyarea_color <- studyarea_cleaned %>%
+  select(
+    reference_no,
+    shp_name,
+    realm,
+    publication_id,
+    color
+  )
+
+readr::write_csv(
+  studyarea_color,
+  file.path(dir_out, "studyarea_color.csv")
+)
+
+
+# expanded:
+# one row per publication_id
+studyarea_color_expanded <- studyarea_color %>%
+  tidyr::separate_rows(
+    reference_no,
+    publication_id,
+    sep = "<br>"
+  )
+
+readr::write_csv(
+  studyarea_color_expanded,
+  file.path(dir_out, "studyarea_color_expanded.csv")
+)
+```
+
+
+
+
+
+
+# Visualize
+
+```{r}
+# ============================================== #
+# map on leaflet
+
+m <- leaflet() %>%
+  addTiles() %>%
+  setView(
+    lng = 138.040,
+    lat = 36.140,
+    zoom = 4
+  )
+
+m <- purrr::reduce(
+  seq_len(nrow(studyarea_cleaned)),
+  function(map, i) {
+
+    map %>%
+      addPolygons(
+        data = studyarea_cleaned$shp[[i]],
+        color = studyarea_cleaned$color[i],
+        weight = 2,
+        opacity = 1,
+        fillColor = studyarea_cleaned$color[i],
+        fillOpacity = 0.3,
+        popup = studyarea_cleaned$publication_id[i]
+      )
+  },
+  .init = m
+)
+
+m
+
+
+```
+
+
+# Export
+
+```{r}
+# ============================================== #
+# export as html
+
+# htmltools::save_html(m, 
+#                      file = here(dir_out, "map_erreview.html"))
+
+
+
+
+# ============================================== #
+# export as self contained html
+
+htmlwidgets::saveWidget(
+  m,
+  file = here(dir_out, "map_erreview_selfcont.html"),
+  selfcontained = TRUE
+)
+
+
+
+
+```
+
+
+
+
+
+# Session info
+
+```{r}
+#| label: session-info
+
+sessioninfo::session_info()
+```
+
+```{r}
+#| label: run-info
+#| echo: false
+
+time_end <- Sys.time()
+elapsed_sec <- as.numeric(difftime(time_end, time_start, units = "secs"))
+elapsed_min <- as.numeric(difftime(time_end, time_start, units = "mins"))
+
+readr::write_lines(
+  c(
+    paste("rendered_at:", Sys.time()),
+    paste("input_file:", in1),
+    paste("input_file:", in2),
+    paste("output_dir:", dir_out),
+    paste("run_time_seconds:", round(elapsed_sec, 1)),
+    paste("run_time_minutes:", round(elapsed_min, 2))),
+  file.path(dir_out, "run_info.txt")
+)
+```

@@ -1,0 +1,6 @@
+rendered_at: 2026-08-18 14:39:37.430921
+input_file: C:/Users/wisdo/Dropbox/02_proj_cloud/_localrepo/er_review_grp/data/20260817_ER_reviewtable_studyarea_polygoninfo.xlsx
+input_file: C:/Users/wisdo/Dropbox/02_proj_cloud/_localrepo/er_review_grp/data/polygon
+output_dir: C:/Users/wisdo/Dropbox/02_proj_cloud/_localrepo/er_review_grp/output/create_leaflet_map/20260818-143914
+run_time_seconds: 21.4
+run_time_minutes: 0.36
