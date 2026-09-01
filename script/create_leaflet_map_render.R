@@ -5,11 +5,9 @@
 library(here)
 library(tidyverse)
 library(quarto)
+library(fs)
 
-library(terra)
-
-
-library(vegan)
+# library(vegan)
 
 
 source(here("r", "render_helpers.R"))
