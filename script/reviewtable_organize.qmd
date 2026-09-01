@@ -123,13 +123,6 @@ ref_ja <- read_xlsx(in2, sheet = "Ja-list_ok")
 
 
 
-# ============================================== #
-# import color code used in polygon
-
-studyarea_color <- readr::read_csv(
-  "C:/Users/wisdo/Dropbox/02_proj_cloud/_localrepo/er_review/result/create_leaflet_map/studyarea_color.csv"
-)
-
 ```
 
 
