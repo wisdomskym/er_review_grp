@@ -16,3 +16,5 @@
 output/*
 script/*/*
 
+# avoid heavy results
+result/create_static_map/create_static_map.html
