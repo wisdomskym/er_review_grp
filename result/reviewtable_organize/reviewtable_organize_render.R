@@ -20,7 +20,7 @@ qmd_file <- here("script", str_c(projname, ".qmd"))
 in1 <- here("data", "20260518_ER_reviewtable_merged_rangeshiftdata.csv")
 
 # in2: cleaned review table
-in2 <- here("data", "20260813_ER_reviewtable_cleaning.xlsx")
+in2 <- here("data", "20260819_ER_reviewtable_cleaning.xlsx")
 
 
 # ============================================== #

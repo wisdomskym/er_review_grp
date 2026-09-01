@@ -29,7 +29,7 @@ editor:
 knitr::opts_chunk$set(
   fig.width = 16,
   fig.height = 9,
-  dpi = 120,
+  dpi = 300,
   out.width = "100%",
   fig.align = "center",
   cache = FALSE
@@ -45,13 +45,14 @@ pacman::p_load(
   # data import
   here,
   fs,
-  readxl,
 
   # data manipulation
   tidyverse,
   
   # plot
   ggh4x,
+  patchwork,
+  gt,
 
   # misc
   tictoc,
@@ -71,6 +72,13 @@ in2 <- params$in2
 dir_out <- params$dir_out
 
 
+# source file
+rts <- "C:/Users/wisdo/Dropbox/02_proj_cloud/_localrepo/basicscripts/script"
+source(here(rts, "othersettings.R"))
+# source(here(rts, "gs.R"))
+
+
+# 
 ```
 
 # WORK FLOW
@@ -102,6 +110,9 @@ rt_prev <- read_csv(in1)
 
 
 # data after small checks in excel
+# rt <- read_csv(in2)
+
+library(readxl)
 rt <- read_xlsx(in2, sheet = "dataentry_ok")
 
 # other sheets
@@ -200,7 +211,9 @@ for (nm in names(rt_prev2)) {
 
 
 
-# Clean range shfit data 1 (light)
+# Clean range shfit data
+
+## rt2: light cleaning
 
 ```{r}
 # ============================================== #
@@ -215,7 +228,13 @@ cols_upper <- c("recorder_name",
                 "study_area",
                 "specific_area",
                 "taxonomic_unit",
-                "taxonomic_unit_revised")
+                "taxonomic_unit_revised",
+                "kingdom",
+                "phylum",
+                "class",
+                "order",
+                "family",
+                "genus")
 
 
 
@@ -232,12 +251,18 @@ rt2 <- rt %>%
   
   # replace NA with "na"
   mutate(across(everything(),
-                ~ tidyr::replace_na(.x, "na")))
+                ~ tidyr::replace_na(.x, "na"))) %>% 
+  # taxonomy
+  relocate(kingdom, phylum, class, order, family, genus, 
+           .after = taxonomic_unit_revised)
 
 # glimpse(rt2)
+```
 
 
+## rt3: light cleaning
 
+```{r}
 # ============================================== #
 # filter out irrelevant data at initial stage
 # edit start period and end period data
@@ -300,7 +325,11 @@ rt3 <- rt2 %>%
   mutate(
     n_years_midyear = endperiod_midyear - startperiod_midyear
   ) %>% 
-  relocate(n_years_midyear, .after = n_years)
+  relocate(n_years_midyear, .after = n_years) %>% 
+  mutate(
+  azimuth_of_shift = na_if(azimuth_of_shift, "na"),
+  azimuth_of_shift = as.numeric(azimuth_of_shift)
+)
 
 nrow(rt2)
 nrow(rt3)
@@ -309,7 +338,8 @@ nrow(rt3)
 
 
 
-# Clean reference info
+## reference info
+
 ```{r}
 
 # ============================================== #
@@ -435,7 +465,7 @@ ref_bind2 <- ref_bind %>%
 
 
 
-# Clean range shfit data 2 (heavy)
+## recodes
 
 ```{r}
 # ============================================== #
@@ -471,11 +501,14 @@ specificarea_recode <- c()
 rt3$kingdom %>% unique()
 
 kingdom_recode <- c(
-  "plant" = "plantae",
-  "animal" = "animalia",
-  "chromista" = "chromista",
-  "動物" = "animalia",
-  "植物" = "plantae"
+  "Plant" = "Plantae",
+  "animal" = "Animalia",
+  "Animal" = "Animalia",
+  "Chromista" = "Chromista",
+  "Animalia"  = "Animalia",
+  "Plantae"  = "Plantae",
+  "動物" = "Animalia",
+  "植物" = "Plantae"
   
 )
 
@@ -525,6 +558,8 @@ ecosystem_recode <- c(
   # forest
   "forest" = "forest",
   "森林" = "forest",
+  
+  
   "forest, alpine" = "forest", # Hitomi E0267 Hakkoda, include subalpine as forest
   
   # grassland
@@ -1009,6 +1044,8 @@ rt3$notes %>% unique()
 ```
 
 
+## rt4: heavy recoding
+
 ```{r}
 # ============================================== #
 # clean dataframe by recoding
@@ -1187,6 +1224,8 @@ rt4 <- rt3 %>%
 ```
 
 
+## rt5: edit unit
+
 ```{r}
 # ============================================== #
 # finally edit unit
@@ -1332,9 +1371,12 @@ rt5 <- rt4 %>%
       TRUE ~ NA_character_
       )
     )
+```
 
 
+## rt6: create horizontal
 
+```{r}
 # ------------ #
 # check combination of gradient and unit
 rt5 %>%
@@ -1343,7 +1385,193 @@ rt5 %>%
 
 
 
-rt_cleaned <- rt5
+
+# ------------ #
+# check distinct combinations of publication, gradient, and unit
+rt5 %>%
+  distinct(
+    publication_id,
+    gradient,
+    unit_of_shift
+  ) %>%
+  arrange(
+    publication_id,
+    gradient,
+    unit_of_shift
+  )
+
+
+rt5_latlon <- rt5 %>%
+  
+  group_by(
+    publication_id,
+    taxonomic_unit_revised,
+    position,
+    across(measurement_type:number_of_censuses)
+  ) %>%
+  
+  # keep groups containing both latitude and longitude
+  filter(
+    all(c("latitude", "longitude") %in% gradient)
+  ) %>%
+  
+  ungroup()
+
+
+rt5_latlon_wide <- rt5_latlon %>%
+  
+  select(
+    -c(comment:recorder_name,
+       azimuth_of_shift, 
+       shift_tested:notes,
+       lat_mean)
+  ) %>%
+  
+  pivot_wider(
+    names_from = gradient,
+    values_from = magnitude_of_shift
+  ) %>%
+  
+  mutate(
+    magnitude_of_shift = sqrt(
+      longitude^2 + latitude^2
+    ),
+    
+    azimuth_of_shift = (
+      atan2(longitude, latitude) * 180 / pi + 360
+    ) %% 360,
+    gradient = "horizontal",
+    unit_of_shift = "km/year",
+    comment = "magnitude and azimuth of the horizontal shift estimated by combining latitude and longitude shift observations"
+  )
+
+
+
+rt6 <- bind_rows(rt5,
+                 rt5_latlon_wide %>% 
+                   select(-latitude, -longitude))
+
+
+
+
+```
+
+
+## final edit
+
+```{r}
+
+rt7 <- rt6 %>% 
+  mutate(
+    
+    # ---------------------------------------------- #
+    # based on publication
+    
+    ecosystem = case_when(
+      publication_id == "Sakiyama 2024" ~ "forest, alpine",
+      publication_id == "Shimazaki et al. 2011" ~ "subalpine",
+      publication_id == "Kizawa et al. 2022" ~ "subalpine",
+      
+      # keep original value otherwise
+      TRUE ~ as.character(ecosystem)
+    ),
+    
+    information_source = case_when(
+      information_source == "governmental monitoring survey" ~ "scientific survey",
+      
+      information_source == "literature" ~ "literature and specimens",
+      information_source == "literature and specimens" ~ "literature and specimens",
+      
+      publication_id == "Kawauchi et al. 2023" ~ "fishery statistics",
+      publication_id == "Tu et al. 2015" ~ "fishery statistics",
+      
+      publication_id == "Higashiguchi et al. 2025" ~ "scientific survey",
+      publication_id == "Kakehi et al. 2021" ~ "scientific survey",
+      
+      # keep original value otherwise
+      TRUE ~ as.character(information_source)
+    )
+  )
+
+
+```
+
+
+
+
+## export
+
+```{r}
+
+# ------------ #
+rt_reorg <- rt7 %>% 
+  select(-taxonomic_unit) %>% 
+  # bring early
+  relocate(include,
+           geographic_scale:shift_source) %>% 
+  # bring middle
+  relocate(reference_no,
+           publication_id:data_section,
+           .after = language) %>% 
+  # bring later
+  relocate(comment, edit_info, recorder_name,
+           .after = last_col()) %>% 
+  arrange(publication_id,
+          gradient, 
+          position,
+          kingdom,
+          phylum,
+          class,
+          order,
+          family,
+          genus)
+
+
+# ------------ #
+# check any issues in key columns
+
+# glimpse(rt_reorg)
+
+keycols <- c("taxonomic_unit_revised",
+             "kingdom",
+             "ecosystem",
+             "realm",
+             "gradient",
+             "position",
+             "observation",
+             "startperiod_startyear",
+             "startperiod_midyear",
+             "endperiod_endyear",
+             "endperiod_midyear",
+             "n_years",
+             "number_of_censuses",
+             "magnitude_of_shift",
+             "unit_of_shift",
+             "language",
+             "publication_id")
+
+
+# display cols that have na
+rt_reorg %>%
+  summarise(
+    across(
+      all_of(keycols),
+      ~ sum(is.na(.x))
+    )
+  ) %>%
+  pivot_longer(
+    everything(),
+    names_to = "column",
+    values_to = "n_na"
+  ) %>%
+  filter(n_na > 0)
+
+
+
+# ------------ #
+rt_cleaned <- rt_reorg
+
+
 
 
 
@@ -1356,6 +1584,7 @@ readr::write_csv(
 )
 
 ```
+
 
 
 # Check cleaned data
@@ -1393,67 +1622,251 @@ rt_cleaned %>%
 
 # Visualize
 
-```{r}
-#| fig-width: 12
-#| fig-height: 6
-
-
-# glimpse(rt_cleaned)
-
-# ============================================== #
-# bar plot: count number of studies
-
-rt_temp <- rt_cleaned %>%
-  filter(!is.na(magnitude_of_shift)) %>%
-  distinct(realm, ecosystem, language, reference_no) %>%
-  count(realm, ecosystem, language, name = "n_studies")
-
-rt_temp 
-
-
-
-```
-
+## Tabulation
 
 ```{r}
-#| fig-width: 12
-#| fig-height: 6
-
 # ============================================== #
-# bar plot: count rows per ecosystem x x gradient
+# tabulation
 
 rt_temp <- rt_cleaned %>%
   
-  filter(
-    !is.na(magnitude_of_shift)
+  group_by(
+    publication_id,
+    language,
+    realm,
+    ecosystem,
+    information_source,
+    observation
   ) %>%
   
-  count(
-    gradient,
+  summarise(
+    
+    study_area = str_c(
+      sort(unique(study_area)),
+      collapse = ", "
+    ),
+    
+    specific_area = str_c(
+      sort(unique(specific_area)),
+      collapse = ", "
+    ),
+    
+    area = str_c(specific_area, ", ", study_area),
+    
+    focus = str_c(
+      sort(unique(kingdom)),
+      collapse = ", "
+    ),
+    
+    n_taxa = n_distinct(taxonomic_unit_revised),
+    
+    gradient = str_c(
+      sort(unique(gradient)),
+      collapse = ", "
+    ),
+    
+    position = str_c(
+      sort(unique(position)),
+      collapse = ", "
+    ),
+    
+    .groups = "drop"
+  ) %>%
+  
+  arrange(
+    realm,
     ecosystem,
-    realm
+    language
+  ) %>% 
+  
+  relocate(study_area, specific_area, area,
+           .after = language) %>% 
+  
+  relocate(focus, observation, n_taxa, information_source,
+           .after = ecosystem) %>% 
+  
+  select(-specific_area, -study_area)
+
+
+
+
+
+# ============================================== #
+# Prepare table
+
+# rt_temp$publication_id
+# rt_temp$area
+
+
+rt_temp_tab <- rt_temp %>%
+  
+  mutate(
+    
+    
+    # ---------------------------------------------- #
+    # area
+    
+    area = recode(
+      area,
+      "Mt.Fuji, Shizuoka" = "Mt. Fuji, Shizuoka",
+      "Hokkaido, Hokkaido" = "Central Hokkaido",
+      "Daisetsuzan National Park, Hokkaido" = "Daisetsuzan, Hokkaido",
+      "Hakkoda Mountains, Aomori" = "Hakkoda Mountains, Aomori",
+      "Mt.Rishiri, Hokkaido" = "Mt. Rishiri, Hokkaido",
+      "Goyozan mountain, Iwate" = "Goyozan Mountains, Iwate",
+      "Japan, Japan" = "Japan",
+      "Kii, Kii" = "Kii Region",
+      "West Japan, West Japan" = "West Japan",
+      "Pacific coast, Tohoku" = "Tohoku Region",
+      "Korea Strait, Japan" = "Korea Strait",
+      "Miyagi, Tohoku" = "Miyagi Prefecture",
+      "central-western sector, Sea of Japan" = "Sea of Japan",
+      "Eastern coast, Japan, Western coast, Japan" = "East and West of Japan",
+      "East China, Pacific coast, East Asia, Japan" = "East and West of Japan"
+    ),
+    
+    
+    
+    # ---------------------------------------------- #
+    # abbreviations
+    
+    realm = str_replace_all(
+      realm,
+      c(
+        "terrestrial" = "t",
+        "marine" = "m"
+      )
+    ),
+    
+    
+    observation = str_replace_all(
+      observation,
+      c(
+        "abundance" = "abu",
+        "occurrence" = "occ"
+      )
+    ),
+    
+    focus = str_replace_all(
+      focus,
+      c(
+        "Plantae" = "Pla",
+        "Animalia" = "Ani",
+        "Chromista" = "Chr"
+      )
+    ),
+    
+    gradient = str_replace_all(
+      gradient,
+      c(
+        "elevation" = "Ele",
+        "latitude" = "Lat",
+        "longitude" = "Lon",
+        "horizontal" = "Hor"
+      )
+    ),
+    
+    position = str_replace_all(
+      position,
+      c(
+        "leading edge" = "Lea",
+        "trailing edge" = "Tra",
+        "centroid" = "Cen"
+      )
+    ),
+    
+    
+    # ---------------------------------------------- #
+    # sentence case
+    
+    language = str_to_sentence(language),
+    realm = factor(
+      str_to_sentence(as.character(realm)),
+      levels = c("T", "M")
+    ),
+    ecosystem = str_to_sentence(as.character(ecosystem)),
+    information_source = str_to_sentence(information_source),
+    observation = str_to_sentence(observation)
+  ) %>%
+  
+  arrange(
+    realm,
+    ecosystem,
+    language
+  )  %>% 
+  
+  relocate(realm) %>%
+  
+  # ---------------------------------------------- #
+  # readable column names
+  
+  rename(
+    "Publication" = publication_id,
+    "Language" = language,
+    "Study area" = area,
+    "Realm" = realm,
+    "Ecosystem" = ecosystem,
+    "Information source" = information_source,
+    "Observation" = observation,
+    "Focus" = focus,
+    "No. taxa" = n_taxa,
+    "Gradient" = gradient,
+    "Position" = position
   )
 
-ggplot(rt_temp, aes(x = realm, y = n, fill = ecosystem)) +
-  geom_col(position = "stack") +
-  facet_grid2(
-    . ~ gradient,
-    scales = "free_x",
-    independent = "x"
-  ) +
-  labs(
-    x = "Realm",
-    y = "Number of observations",
-    fill = "Ecosystem",
-    title = "Number of observations per gradient",
-  ) +
-  theme_bw(base_size = 16) +
-  theme(
-    legend.position = "top",
-    axis.text.x = element_text(angle = 30, hjust = 1)
+# ============================================== #
+# Table
+
+rt_temp_gt <- rt_temp_tab %>%
+  gt() %>%
+  
+  cols_align(
+    align = "left",
+    columns = everything()
+  ) %>%
+  
+  # cols_align(
+  #   align = "center",
+  #   columns = c(
+  #     Language,
+  #     Focus,
+  #     `No. taxa`,
+  #     Gradient,
+  #     Position
+  #   )
+  # ) %>%
+  
+  tab_options(
+    table.font.size = 12,
+    data_row.padding = px(4)
   )
 
+rt_temp_gt
 
+gtsave(
+  rt_temp_gt,
+  filename = file.path(dir_out, "rt_temp_gt.png"),
+  zoom = 2
+)
+```
+
+
+
+
+## Count studies
+
+### for prisma 
+
+```{r}
+# ============================================== #
+# count studies
+
+rt_temp <- rt_cleaned %>%
+  distinct(realm, language, publication_id) %>% 
+  arrange(realm, language, publication_id)
+
+rt_temp %>%
+  count(realm, language, name = "n_studies")
 
 
 
@@ -1461,12 +1874,2701 @@ ggplot(rt_temp, aes(x = realm, y = n, fill = ecosystem)) +
 ```
 
 
+## Count observations
 
-## Gantt chart-like plot
+### rt_countobs
+
+```{r}
+
+rt_countobs <- rt_cleaned %>%
+  mutate(
+    across(
+      c(
+        realm,
+        kingdom,
+        class,
+        gradient,
+        position,
+        information_source
+      ),
+      stringr::str_to_sentence
+    ),
+    
+    realm = factor(
+      realm,
+      levels = c(
+        "Terrestrial",
+        "Marine"
+      )
+    ),
+    
+    gradient = factor(
+      gradient,
+      levels = c(
+        "Elevation",
+        "Latitude",
+        "Longitude",
+        "Horizontal"
+      )
+    )
+  )
+
+
+rt_countobs2 <- rt_cleaned %>%
+  mutate(
+    across(
+      c(
+        realm,
+        kingdom,
+        class,
+        gradient,
+        position,
+        information_source
+      ),
+      stringr::str_to_sentence
+    ),
+    realm = factor(
+      realm,
+      levels = c(
+        "Marine",
+        "Terrestrial"
+      )
+    )
+  )
+```
+
+
+
+### color coding
+
+```{r}
+
+# ============================================== #
+# Realm color palettes
+
+realm_palette <- function(realm, n) {
+  
+  # generate 1.5x as many colors
+  # generate more colors when n = 1
+  n_full <- if (n == 1) {
+    ceiling(n * 3)
+  } else {
+    ceiling(n * 1.5)
+  }
+  
+  
+  # ---------------------------------------------- #
+  # create full palette
+  
+  if (realm == "Marine") {
+    
+    cols <- grDevices::hcl.colors(
+      n_full,
+      palette = "Blues 3"
+    )
+    
+  } else if (realm == "Terrestrial") {
+    
+    cols <- grDevices::hcl.colors(
+      n_full,
+      palette = "YlOrRd"
+    )
+    
+  } else {
+    
+    cols <- grDevices::hcl.colors(
+      n_full,
+      palette = "Dark 3"
+    )
+  }
+  
+  
+  # ---------------------------------------------- #
+  # extract n colors around the middle
+  
+  start <- floor((n_full - n) / 2) + 1
+  end <- start + n - 1
+  
+  cols[start:end]
+}
+
+
+# example
+marine_colors <- realm_palette(
+  "Marine",
+  5
+)
+
+terrestrial_colors <- realm_palette(
+  "Terrestrial",
+  7
+)
+
+# scales::show_col(marine_colors)
+# scales::show_col(terrestrial_colors)
+
+```
+
+
+
+### per realm
+
+```{r}
+#| fig-width: 8
+#| fig-height: 2
+
+# ============================================== #
+# Realm colors
+
+realm_colors <- c(
+  "Marine" = realm_palette(
+    "Marine",
+    1
+  ),
+  "Terrestrial" = realm_palette(
+    "Terrestrial",
+    1
+  )
+)
+
+
+# ============================================== #
+# stacked bar plot: proportion per realm
+
+rt_temp <- rt_countobs2 %>%
+  count(realm) %>%
+  mutate(
+    prop = n / sum(n)
+  )
+
+
+
+# ============================================== #
+# Plot
+g_realm <- ggplot(
+  rt_temp,
+    aes(
+      x = 1,
+      y = prop,
+      fill = realm
+    )
+  ) +
+  
+  geom_col(
+    width = 0.7
+  ) +
+  
+  coord_flip() +
+  
+  scale_fill_manual(
+    values = realm_colors
+  ) +
+  
+  scale_y_continuous(
+    labels = scales::percent
+  ) +
+  
+  labs(
+    x = NULL,
+    y = "Proportion",
+    fill = "Realm"
+  ) +
+  
+  theme_bw(base_size = 16) +
+  
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+
+# g_realm
+```
+
+
+#### refine 1: NOT USE
+
+
+```{r}
+#| fig-width: 8
+#| fig-height: 2
+
+g_realm <- ggplot(
+  rt_temp,
+  aes(
+    x = 1,
+    y = prop,
+    fill = realm
+  )
+) +
+  
+  geom_col(
+    width = 0.7
+  ) +
+  
+  # Marine label inside the bar
+  geom_text(
+    data = rt_temp %>%
+      filter(realm == "Marine"),
+    aes(
+      y = 1 - prop / 2,
+      label = paste0(
+        realm,
+        " (",
+        scales::percent(prop, accuracy = 1),
+        ")"
+      )
+    ),
+    size = 5
+  ) +
+  
+  # connector from Terrestrial segment
+  geom_segment(
+    data = rt_temp %>%
+      filter(realm == "Terrestrial"),
+    aes(
+      x = 1.2,
+      xend = 1.45,
+      y = prop / 2,
+      yend = prop / 2 + 0.02
+    ),
+    inherit.aes = FALSE,
+    linewidth = 0.6
+  ) +
+  
+  # Terrestrial label above the bar and shifted right
+  geom_text(
+    data = rt_temp %>%
+      filter(realm == "Terrestrial"),
+    aes(
+      x = 1.45,
+      y = prop / 2 + 0.02,
+      label = paste0(
+        realm,
+        " (",
+        scales::percent(prop, accuracy = 1),
+        ")"
+      )
+    ),
+    inherit.aes = FALSE,
+    size = 5,
+    hjust = 0
+  ) +
+  
+  coord_flip(
+    clip = "off"
+  ) +
+  
+  scale_fill_manual(
+    values = realm_colors
+  ) +
+  
+  theme_void() +
+  
+  theme(
+    legend.position = "none",
+    plot.margin = margin(
+      t = 40,
+      r = 10,
+      b = 10,
+      l = 10
+    )
+  )
+
+g_realm
+
+```
+
+
+
+#### refine 2: USE
+
+
+```{r}
+#| fig-width: 8
+#| fig-height: 2
+
+
+# ============================================== #
+# realm colors
+
+realm_colors <- grDevices::hcl.colors(
+  2,
+  palette = "Pastel 1"
+)
+
+names(realm_colors) <- c(
+  "Marine",
+  "Terrestrial"
+)
+
+
+# ============================================== #
+# Plot
+
+g_realm <- ggplot(
+  rt_temp,
+  aes(
+    x = 1,
+    y = prop,
+    fill = realm
+  )
+) +
+  
+  geom_col(
+    width = 0.7,
+    color = "black",
+    linewidth = 1.0
+  ) +
+  
+  # Marine label inside the bar
+  geom_text(
+    data = rt_temp %>%
+      filter(realm == "Marine"),
+    aes(
+      y = 1 - prop / 2,
+      label = paste0(
+        realm,
+        " (",
+        scales::percent(prop, accuracy = 1),
+        ")"
+      )
+    ),
+    size = 7
+  ) +
+  
+  # connector from Terrestrial segment
+  geom_segment(
+    data = rt_temp %>%
+      filter(realm == "Terrestrial"),
+    aes(
+      x = 1.2,
+      xend = 1.45,
+      y = prop / 2,
+      yend = prop / 2 + 0.02
+    ),
+    inherit.aes = FALSE,
+    linewidth = 0.6
+  ) +
+  
+  # Terrestrial label
+  geom_text(
+    data = rt_temp %>%
+      filter(realm == "Terrestrial"),
+    aes(
+      x = 1.45,
+      y = prop / 2 + 0.02,
+      label = paste0(
+        realm,
+        " (",
+        scales::percent(prop, accuracy = 1),
+        ")"
+      )
+    ),
+    inherit.aes = FALSE,
+    size = 7,
+    hjust = 0
+  ) +
+  
+  ggtitle("a) Realm") +
+  
+  coord_flip(
+    clip = "off"
+  ) +
+  
+  scale_y_continuous(
+    limits = c(0, 1),
+    expand = c(0, 0)
+  ) +
+  
+  scale_fill_manual(
+    values = realm_colors
+  ) +
+  
+  theme_void(
+    base_size = 18
+  ) +
+  
+  
+  theme(
+    legend.position = "none",
+    
+    plot.title = element_text(
+      margin = margin(
+        b = 10
+      )
+    ),
+    plot.margin = margin(
+      t = 10,
+      r = 0,
+      b = 0,
+      l = 0
+    )
+  )
+
+g_realm
+```
+
+
+
+### per taxonomic group
+
+```{r}
+#| fig-width: 8
+#| fig-height: 2
+
+# ============================================== #
+# stacked bar: taxa composition
+
+rt_temp <- rt_countobs %>%
+  count(
+    realm,
+    kingdom,
+    class
+  )
+
+
+bar_class <- rt_temp %>%
+  group_by(realm) %>%
+  arrange(kingdom, class, .by_group = TRUE) %>%
+  mutate(
+    prop = n / sum(n),
+    xmax = cumsum(prop),
+    xmin = lag(xmax, default = 0)
+  ) %>%
+  ungroup()
+
+
+bar_kingdom_boundary <- bar_class %>%
+  group_by(
+    realm,
+    kingdom
+  ) %>%
+  summarise(
+    boundary = max(xmax),
+    .groups = "drop"
+  ) %>%
+  filter(
+    boundary < 1
+  )
+
+
+
+
+# ============================================== #
+# Plot
+
+g_taxo <- ggplot() +
+  
+  # ---------------------------------------------- #
+  # class segments
+  
+  geom_rect(
+    data = bar_class,
+    aes(
+      xmin = xmin,
+      xmax = xmax,
+      ymin = 0,
+      ymax = 1,
+      fill = class
+    ),
+    color = "white",
+    linewidth = 0.5
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # thicker boundaries between kingdoms
+  
+  geom_segment(
+    data = bar_kingdom_boundary,
+    aes(
+      x = boundary,
+      xend = boundary,
+      y = 0,
+      yend = 1
+    ),
+    inherit.aes = FALSE,
+    color = "black",
+    linewidth = 1.3
+  ) +
+  
+  
+  # ============================================== #
+  # facets
+  
+  facet_wrap(
+    ~ realm,
+    ncol = 2
+  ) +
+  
+  
+  scale_x_continuous(
+    limits = c(0, 1),
+    labels = scales::percent,
+    expand = c(0, 0)
+  ) +
+  
+  scale_y_continuous(
+    breaks = NULL,
+    expand = c(0, 0)
+  ) +
+  
+  labs(
+    x = "Proportion",
+    y = NULL,
+    fill = "Class"
+  ) +
+  
+  theme_bw(base_size = 16) +
+  
+  theme(
+    panel.grid = element_blank(),
+    strip.background = element_rect(
+      fill = "grey90"
+    )
+  )
+
+# g_taxo
+
+```
+
+
+#### refine color 1: NOT USE
+
+```{r}
+#| eval: FALSE
+#| echo: FALSE
+#| fig-width: 8
+#| fig-height: 2
+
+# ============================================== #
+# prepare data
+
+rt_temp <- rt_countobs %>%
+  count(
+    realm,
+    kingdom,
+    class
+  )
+
+
+bar_class <- rt_temp %>%
+  group_by(realm) %>%
+  arrange(kingdom, class, .by_group = TRUE) %>%
+  mutate(
+    prop = n / sum(n),
+    xmax = cumsum(prop),
+    xmin = lag(xmax, default = 0),
+    
+    # separate fill category by realm
+    fill_group = paste(
+      realm,
+      class,
+      sep = "__"
+    )
+  ) %>%
+  ungroup()
+
+
+# ============================================== #
+# kingdom boundaries
+
+bar_kingdom_boundary <- bar_class %>%
+  group_by(
+    realm,
+    kingdom
+  ) %>%
+  summarise(
+    boundary = max(xmax),
+    .groups = "drop"
+  ) %>%
+  filter(
+    boundary < 1
+  )
+
+
+# ============================================== #
+# class colors by realm
+
+class_colors_df <- bar_class %>%
+  distinct(
+    realm,
+    class,
+    fill_group
+  ) %>%
+  group_by(realm) %>%
+  arrange(class, .by_group = TRUE) %>%
+  mutate(
+    color = case_when(
+      
+      realm == "Marine" ~
+        realm_palette(
+          "Marine",
+          n()
+        ),
+      
+      realm == "Terrestrial" ~
+        realm_palette(
+          "Terrestrial",
+          n()
+        )
+    )
+  ) %>%
+  ungroup()
+
+
+class_colors <- class_colors_df$color
+names(class_colors) <- class_colors_df$fill_group
+
+
+
+
+
+# ============================================== #
+# Plot
+
+g_taxo <- ggplot() +
+  
+  # ---------------------------------------------- #
+  # class segments
+  
+  geom_rect(
+    data = bar_class,
+    aes(
+      xmin = xmin,
+      xmax = xmax,
+      ymin = 0,
+      ymax = 1,
+      fill = fill_group
+    ),
+    color = "white",
+    linewidth = 0.5
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # thicker boundaries between kingdoms
+  
+  geom_segment(
+    data = bar_kingdom_boundary,
+    aes(
+      x = boundary,
+      xend = boundary,
+      y = 0,
+      yend = 1
+    ),
+    inherit.aes = FALSE,
+    color = "black",
+    linewidth = 1.3
+  ) +
+  
+  
+  # ============================================== #
+  # facets
+  
+  facet_wrap(
+    ~ realm,
+    ncol = 2
+  ) +
+  
+  
+  # ============================================== #
+  # colors
+  
+  scale_fill_manual(
+    values = class_colors,
+    
+    # remove realm prefix from legend labels
+    labels = function(x) {
+      stringr::str_remove(
+        x,
+        "^.*__"
+      )
+    }
+  ) +
+  
+  
+  scale_x_continuous(
+    limits = c(0, 1),
+    labels = scales::percent,
+    expand = c(0, 0)
+  ) +
+  
+  scale_y_continuous(
+    breaks = NULL,
+    expand = c(0, 0)
+  ) +
+  
+  labs(
+    x = "Proportion",
+    y = NULL,
+    fill = "Class"
+  ) +
+  
+  theme_void(base_size = 16) +
+  
+  theme(
+    legend.position = "top",
+    panel.grid = element_blank(),
+    strip.background = element_rect(
+      fill = "grey90"
+    )
+  )
+
+
+g_taxo
+
+```
+
+
+
+
+#### refine color 2: NOT USE
+
+```{r}
+#| eval: FALSE
+#| echo: FALSE
+#| fig-width: 8
+#| fig-height: 2
+
+
+# ============================================== #
+# prepare data
+
+rt_temp <- rt_countobs %>%
+  count(
+    realm,
+    kingdom,
+    class
+  )
+
+
+bar_class <- rt_temp %>%
+  group_by(realm) %>%
+  arrange(kingdom, class, .by_group = TRUE) %>%
+  mutate(
+    prop = n / sum(n),
+    xmax = cumsum(prop),
+    xmin = lag(xmax, default = 0)
+  ) %>%
+  ungroup()
+
+
+# ============================================== #
+# kingdom boundaries
+
+bar_kingdom_boundary <- bar_class %>%
+  group_by(
+    realm,
+    kingdom
+  ) %>%
+  summarise(
+    boundary = max(xmax),
+    .groups = "drop"
+  ) %>%
+  filter(
+    boundary < 1
+  )
+
+
+# ============================================== #
+# kingdom label positions
+
+bar_kingdom_label <- bar_class %>%
+  group_by(
+    realm,
+    kingdom
+  ) %>%
+  summarise(
+    xmin = min(xmin),
+    xmax = max(xmax),
+    x = (xmin + xmax) / 2,
+    .groups = "drop"
+  )
+
+
+# ============================================== #
+# class colors
+
+n_class <- bar_class %>%
+  distinct(class) %>%
+  nrow()
+
+class_colors <- grDevices::hcl.colors(
+  n_class,
+  palette = "Pastel 1"
+)
+
+names(class_colors) <- sort(
+  unique(bar_class$class)
+)
+
+
+# ============================================== #
+# Plot
+
+g_taxo <- ggplot() +
+  
+  # ---------------------------------------------- #
+  # class segments
+  
+  geom_rect(
+    data = bar_class,
+    aes(
+      xmin = xmin,
+      xmax = xmax,
+      ymin = 0,
+      ymax = 1,
+      fill = class
+    ),
+    color = "white",
+    linewidth = 0.5
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # thicker boundaries between kingdoms
+  
+  geom_segment(
+    data = bar_kingdom_boundary,
+    aes(
+      x = boundary,
+      xend = boundary,
+      y = 0,
+      yend = 1
+    ),
+    inherit.aes = FALSE,
+    color = "black",
+    linewidth = 1.3
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # kingdom labels
+  
+  geom_text(
+    data = bar_kingdom_label,
+    aes(
+      x = x,
+      y = 1.05,
+      label = kingdom
+    ),
+    inherit.aes = FALSE,
+    size = 5
+  ) +
+  
+  
+  # ============================================== #
+  # facets
+  
+  facet_wrap(
+    ~ realm,
+    ncol = 2
+  ) +
+  
+  
+  # ============================================== #
+  # colors
+  
+  scale_fill_manual(
+    values = class_colors
+  ) +
+  
+  
+  scale_x_continuous(
+    limits = c(0, 1),
+    labels = scales::percent,
+    expand = c(0, 0)
+  ) +
+  
+  scale_y_continuous(
+    breaks = NULL,
+    limits = c(0, 1.2),
+    expand = c(0, 0)
+  ) +
+  
+  labs(
+    x = "Proportion",
+    y = NULL,
+    fill = "Class"
+  ) +
+  
+  theme_void(base_size = 16) +
+  
+  theme(
+    legend.position = "top",
+    panel.grid = element_blank(),
+    strip.text = element_text(
+      size = 18,
+      face = "bold"
+    )
+)
+
+
+# g_taxo
+
+```
+
+
+
+
+#### refine 3: NOT USE
+
+```{r}
+#| eval: FALSE
+#| echo: FALSE
+#| fig-width: 8
+#| fig-height: 2
+
+# ============================================== #
+# class level
+
+bar_class <- rt_countobs %>%
+  count(
+    realm,
+    kingdom,
+    class
+  ) %>%
+  group_by(realm) %>%
+  arrange(kingdom, class, .by_group = TRUE) %>%
+  mutate(
+    prop = n / sum(n),
+    xmax = cumsum(prop),
+    xmin = lag(xmax, default = 0)
+  ) %>%
+  ungroup()
+
+
+# ============================================== #
+# kingdom level
+
+bar_kingdom <- bar_class %>%
+  group_by(
+    realm,
+    kingdom
+  ) %>%
+  summarise(
+    xmin = min(xmin),
+    xmax = max(xmax),
+    x = (xmin + xmax) / 2,
+    .groups = "drop"
+  )
+
+
+# ============================================== #
+# kingdom boundaries within class bar
+
+bar_kingdom_boundary <- bar_kingdom %>%
+  group_by(realm) %>%
+  arrange(xmin, .by_group = TRUE) %>%
+  filter(
+    xmax < 1
+  ) %>%
+  transmute(
+    realm,
+    boundary = xmax
+  ) %>%
+  ungroup()
+
+
+# ============================================== #
+# class label positions
+
+bar_class_label <- bar_class %>%
+  mutate(
+    x = (xmin + xmax) / 2
+  )
+
+
+# ============================================== #
+# large classes: label inside bar
+
+bar_class_label_large <- bar_class_label %>%
+  filter(
+    prop >= 0.1
+  )
+
+
+# ============================================== #
+# small classes: labels outside bar
+
+bar_class_label_small <- bar_class_label %>%
+  filter(
+    prop < 0.1
+  ) %>%
+  group_by(realm) %>%
+  arrange(x, .by_group = TRUE) %>%
+  mutate(
+    label_id = row_number(),
+    
+    # alternate between two rows
+    label_row = (label_id - 1) %% 2,
+    
+    # spread labels horizontally
+    label_x = seq(
+      0.08,
+      0.92,
+      length.out = n()
+    ),
+    
+    # stagger vertically
+    label_y = -0.18 - 0.18 * label_row
+  ) %>%
+  ungroup()
+
+
+# ============================================== #
+# class colors
+
+n_class <- bar_class %>%
+  distinct(class) %>%
+  nrow()
+
+class_colors <- grDevices::hcl.colors(
+  n_class,
+  palette = "Pastel 1"
+)
+
+names(class_colors) <- sort(
+  unique(bar_class$class)
+)
+
+
+# ============================================== #
+# Plot
+
+g_taxo <- ggplot() +
+  
+  # ---------------------------------------------- #
+  # kingdom bar
+  
+  geom_rect(
+    data = bar_kingdom,
+    aes(
+      xmin = xmin,
+      xmax = xmax,
+      ymin = 1,
+      ymax = 1.4
+    ),
+    fill = "white",
+    color = "black",
+    linewidth = 1.3
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # kingdom text inside kingdom bar
+  
+  geom_text(
+    data = bar_kingdom,
+    aes(
+      x = x,
+      y = 1.2,
+      label = kingdom
+    ),
+    inherit.aes = FALSE,
+    size = 4.5
+  ) +
+  
+  # ---------------------------------------------- #
+  # class bar
+  
+  geom_rect(
+    data = bar_class,
+    aes(
+      xmin = xmin,
+      xmax = xmax,
+      ymin = 0,
+      ymax = 1,
+      fill = class
+    ),
+    color = "black",
+    linewidth = 0.5
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # thicker boundaries between kingdoms
+  # within class bar
+  
+  geom_segment(
+    data = bar_kingdom_boundary,
+    aes(
+      x = boundary,
+      xend = boundary,
+      y = 0,
+      yend = 1
+    ),
+    inherit.aes = FALSE,
+    color = "black",
+    linewidth = 1.3
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # thicker outer border around entire class bar
+  
+  geom_rect(
+    data = bar_class %>%
+      distinct(realm),
+    aes(
+      xmin = 0,
+      xmax = 1,
+      ymin = 0,
+      ymax = 1
+    ),
+    inherit.aes = FALSE,
+    fill = NA,
+    color = "black",
+    linewidth = 1.3
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # large class labels inside class bar
+  
+  geom_text(
+    data = bar_class_label_large,
+    aes(
+      x = x,
+      y = 0.5,
+      label = class
+    ),
+    inherit.aes = FALSE,
+    size = 3.5
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # diagonal connectors for small classes
+  
+  geom_segment(
+    data = bar_class_label_small,
+    aes(
+      x = x,
+      xend = label_x,
+      y = 0,
+      yend = label_y + 0.04
+    ),
+    inherit.aes = FALSE,
+    linewidth = 0.5
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # small class labels outside class bar
+  
+  geom_text(
+    data = bar_class_label_small,
+    aes(
+      x = label_x,
+      y = label_y,
+      label = class
+    ),
+    inherit.aes = FALSE,
+    size = 3.5,
+    hjust = 0.5
+  ) +
+  
+  
+  # ============================================== #
+  # facets
+  
+  facet_wrap(
+    ~ realm,
+    ncol = 2
+  ) +
+  
+  
+  # ============================================== #
+  # colors
+  
+  scale_fill_manual(
+    values = class_colors
+  ) +
+  
+  
+  # ============================================== #
+  # scales
+  
+  scale_x_continuous(
+    limits = c(0, 1),
+    expand = c(0, 0)
+  ) +
+  
+  scale_y_continuous(
+    breaks = NULL,
+    limits = c(-0.5, 1.4),
+    expand = c(0, 0)
+  ) +
+  
+  
+  # ============================================== #
+  # labels
+  
+  ggtitle("b) Taxonomic group (kingdom and class)") +
+  
+  labs(
+    x = NULL,
+    y = NULL
+  ) +
+  
+  
+  # ============================================== #
+  # theme
+  
+  theme_void(
+    base_size = 18
+  ) +
+  
+  theme(
+    legend.position = "none",
+    
+    plot.title = element_text(
+      margin = margin(
+        b = 10
+      )
+    ),
+    
+    strip.text = element_text(
+      size = 18,
+      face = "bold"
+    ),
+    plot.margin = margin(
+      t = 10,
+      r = 0,
+      b = 0,
+      l = 0
+    )
+  )
+
+
+g_taxo
+
+```
+
+
+
+
+#### refine 4: USE
+
+```{r}
+#| fig-width: 8
+#| fig-height: 2
+
+# ============================================== #
+# class level
+
+bar_class <- rt_countobs %>%
+  count(
+    realm,
+    kingdom,
+    class
+  ) %>%
+  group_by(realm) %>%
+  arrange(kingdom, class, .by_group = TRUE) %>%
+  mutate(
+    prop = n / sum(n),
+    xmax = cumsum(prop),
+    xmin = lag(xmax, default = 0)
+  ) %>%
+  ungroup()
+
+
+# ============================================== #
+# kingdom level
+
+bar_kingdom <- bar_class %>%
+  group_by(
+    realm,
+    kingdom
+  ) %>%
+  summarise(
+    xmin = min(xmin),
+    xmax = max(xmax),
+    x = (xmin + xmax) / 2,
+    .groups = "drop"
+  )
+
+
+# ============================================== #
+# kingdom label positions
+
+bar_kingdom_label <- bar_kingdom %>%
+  mutate(
+    prop = xmax - xmin
+  )
+
+
+# ============================================== #
+# large kingdoms: label inside bar
+
+bar_kingdom_label_large <- bar_kingdom_label %>%
+  filter(
+    prop >= 0.1
+  )
+
+
+# ============================================== #
+# small kingdoms: label outside bar
+
+bar_kingdom_label_small <- bar_kingdom_label %>%
+  filter(
+    prop < 0.1
+  ) %>%
+  group_by(realm) %>%
+  arrange(x, .by_group = TRUE) %>%
+  mutate(
+    label_id = row_number(),
+    label_row = (label_id - 1) %% 2,
+    
+    # move labels at edges toward the center
+    label_x = case_when(
+      x < 0.1 ~ x + 0.08,
+      x > 0.9 ~ x - 0.08,
+      TRUE ~ x
+    ),
+    
+    label_y = 1.62 + 0.18 * label_row
+  ) %>%
+  ungroup()
+
+
+
+# ============================================== #
+# kingdom boundaries within class bar
+
+bar_kingdom_boundary <- bar_kingdom %>%
+  group_by(realm) %>%
+  arrange(xmin, .by_group = TRUE) %>%
+  filter(
+    xmax < 1
+  ) %>%
+  transmute(
+    realm,
+    boundary = xmax
+  ) %>%
+  ungroup()
+
+
+# ============================================== #
+# class label positions
+
+bar_class_label <- bar_class %>%
+  mutate(
+    x = (xmin + xmax) / 2
+  )
+
+
+# ============================================== #
+# large classes: label inside bar
+
+bar_class_label_large <- bar_class_label %>%
+  filter(
+    prop >= 0.1
+  )
+
+
+# ============================================== #
+# small classes: labels outside bar
+
+bar_class_label_small <- bar_class_label %>%
+  filter(
+    prop < 0.1
+  ) %>%
+  group_by(realm) %>%
+  arrange(x, .by_group = TRUE) %>%
+  mutate(
+    label_id = row_number(),
+    
+    # alternate between two rows
+    label_row = (label_id - 1) %% 2,
+    
+    # spread labels horizontally
+    label_x = seq(
+      0.08,
+      0.92,
+      length.out = n()
+    ),
+    
+    # stagger vertically
+    label_y = -0.18 - 0.18 * label_row
+  ) %>%
+  ungroup() %>% 
+  mutate(
+    # edit manually
+    label_x = case_when(
+      class == "Liliopsida" ~ 0.5,
+      class == "Bivalvia" ~ 0.06,
+      class == "Cephalopoda" ~ 0.14, 
+      class == "Elasmobranchii" ~ 0.24, 
+      class == "Holothuroidea" ~ 0.34, 
+      class == "Malacostraca" ~ 0.54, 
+      class == "Polyplacophora" ~ 0.6, 
+      class == "Florideophyceae" ~ 0.86, 
+      
+      TRUE ~ label_x
+    ),
+    
+    # edit manually
+    label_y = case_when(
+      class == "Holothuroidea" ~ -0.36, 
+      class == "Malacostraca" ~ -0.36, 
+      class == "Polyplacophora" ~ -0.18, 
+      
+      TRUE ~ label_y
+    )
+  )
+
+
+# ============================================== #
+# class colors
+
+n_class <- bar_class %>%
+  distinct(class) %>%
+  nrow()
+
+class_colors <- grDevices::hcl.colors(
+  n_class,
+  palette = "Pastel 1"
+)
+
+names(class_colors) <- sort(
+  unique(bar_class$class)
+)
+
+
+# ============================================== #
+# Plot
+
+g_taxo <- ggplot() +
+  
+  # ---------------------------------------------- #
+  # kingdom bar
+  
+  geom_rect(
+    data = bar_kingdom,
+    aes(
+      xmin = xmin,
+      xmax = xmax,
+      ymin = 1,
+      ymax = 1.4
+    ),
+    fill = "white",
+    color = "black",
+    linewidth = 1.3
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # large kingdom labels inside kingdom bar
+  
+  geom_text(
+    data = bar_kingdom_label_large,
+    aes(
+      x = x,
+      y = 1.2,
+      label = kingdom
+    ),
+    inherit.aes = FALSE,
+    size = 6
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # connectors for small kingdoms
+  
+  geom_segment(
+    data = bar_kingdom_label_small,
+    aes(
+      x = x,
+      xend = label_x,
+      y = 1.4,
+      yend = label_y - 0.1
+    ),
+    inherit.aes = FALSE,
+    linewidth = 0.5
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # small kingdom labels outside kingdom bar
+  
+  geom_text(
+    data = bar_kingdom_label_small,
+    aes(
+      x = label_x,
+      y = label_y,
+      label = kingdom
+    ),
+    inherit.aes = FALSE,
+    size = 6,
+    hjust = 0.5
+  ) +
+  
+  # ---------------------------------------------- #
+  # class bar
+  
+  geom_rect(
+    data = bar_class,
+    aes(
+      xmin = xmin,
+      xmax = xmax,
+      ymin = 0,
+      ymax = 1,
+      fill = class
+    ),
+    color = "black",
+    linewidth = 0.5
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # thicker boundaries between kingdoms
+  # within class bar
+  
+  geom_segment(
+    data = bar_kingdom_boundary,
+    aes(
+      x = boundary,
+      xend = boundary,
+      y = 0,
+      yend = 1
+    ),
+    inherit.aes = FALSE,
+    color = "black",
+    linewidth = 1.3
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # thicker outer border around entire class bar
+  
+  geom_rect(
+    data = bar_class %>%
+      distinct(realm),
+    aes(
+      xmin = 0,
+      xmax = 1,
+      ymin = 0,
+      ymax = 1
+    ),
+    inherit.aes = FALSE,
+    fill = NA,
+    color = "black",
+    linewidth = 1.3
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # large class labels inside class bar
+  
+  geom_text(
+    data = bar_class_label_large,
+    aes(
+      x = x,
+      y = 0.5,
+      label = class
+    ),
+    inherit.aes = FALSE,
+    size = 4.5
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # diagonal connectors for small classes
+  
+  geom_segment(
+    data = bar_class_label_small,
+    aes(
+      x = x,
+      xend = label_x,
+      y = 0,
+      yend = label_y + 0.06
+    ),
+    inherit.aes = FALSE,
+    linewidth = 0.5
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # small class labels outside class bar
+  
+  geom_text(
+    data = bar_class_label_small,
+    aes(
+      x = label_x,
+      y = label_y,
+      label = class
+    ),
+    inherit.aes = FALSE,
+    size = 4.5,
+    hjust = 0.5
+  ) +
+  
+  
+  # ============================================== #
+  # facets
+  
+  facet_wrap(
+    ~ realm,
+    ncol = 2
+  ) +
+  
+  
+  # ============================================== #
+  # colors
+  
+  scale_fill_manual(
+    values = class_colors
+  ) +
+  
+  
+  # ============================================== #
+  # scales
+  
+  scale_x_continuous(
+    limits = c(0, 1),
+    expand = c(0, 0)
+  ) +
+  
+  scale_y_continuous(
+    breaks = NULL,
+    limits = c(-0.5, 1.75),
+    expand = c(0, 0)
+  ) +
+  
+  
+  # ============================================== #
+  # labels
+  
+  ggtitle("b) Taxonomic group (kingdom and class)") +
+  
+  labs(
+    x = NULL,
+    y = NULL
+  ) +
+  
+  
+  # ============================================== #
+  # theme
+  
+  theme_void(
+    base_size = 18
+  ) +
+  
+  theme(
+    legend.position = "none",
+    
+    plot.title = element_text(
+      margin = margin(
+        b = 10
+      )
+    ),
+    
+    strip.text = element_text(
+      size = 18,
+      face = "bold"
+    )
+  )
+
+
+g_taxo
+
+```
+
+
+
+
+### per gradient x position
+
+#### orig: NOT USE
+
+```{r}
+#| fig-width: 8
+#| fig-height: 2
+
+# ============================================== #
+# stacked bar: gradient > position
+
+bar_position <- rt_countobs %>%
+  
+  count(
+    realm,
+    gradient,
+    position
+  ) %>%
+  
+  group_by(realm) %>%
+  arrange(gradient, position, .by_group = TRUE) %>%
+  
+  mutate(
+    prop = n / sum(n),
+    xmax = cumsum(prop),
+    xmin = lag(xmax, default = 0)
+  ) %>%
+  
+  ungroup()
+
+# ============================================== #
+# gradient boundaries
+
+bar_gradient_boundary <- bar_position %>%
+  group_by(
+    realm,
+    gradient
+  ) %>%
+  summarise(
+    boundary = max(xmax),
+    .groups = "drop"
+  ) %>%
+  filter(
+    boundary < 1
+  )
+
+# ============================================== #
+# gradient label positions
+
+bar_gradient_label <- bar_position %>%
+  group_by(
+    realm,
+    gradient
+  ) %>%
+  summarise(
+    xmin = min(xmin),
+    xmax = max(xmax),
+    x = (xmin + xmax) / 2,
+    .groups = "drop"
+  )
+
+
+# ============================================== #
+# position colors
+
+n_position <- n_distinct(
+  bar_position$position
+)
+
+position_colors <- grDevices::hcl.colors(
+  n_position,
+  palette = "Pastel 1"
+)
+
+scales::show_col(position_colors)
+
+names(position_colors) <- sort(
+  unique(bar_position$position)
+)
+
+
+# ============================================== #
+# Plot
+
+g_grad <- ggplot() +
+  
+  # ---------------------------------------------- #
+  # small boundaries: position
+  
+  geom_rect(
+    data = bar_position,
+    aes(
+      xmin = xmin,
+      xmax = xmax,
+      ymin = 0,
+      ymax = 1,
+      fill = position
+    ),
+    color = "white",
+    linewidth = 0.5
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # large boundaries: gradient
+  
+  geom_segment(
+    data = bar_gradient_boundary,
+    aes(
+      x = boundary,
+      xend = boundary,
+      y = 0,
+      yend = 1
+    ),
+    inherit.aes = FALSE,
+    color = "black",
+    linewidth = 1.3
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # gradient labels
+  
+  geom_text(
+    data = bar_gradient_label,
+    aes(
+      x = x,
+      y = 1.05,
+      label = gradient
+    ),
+    inherit.aes = FALSE,
+    size = 5
+  ) +
+  
+  
+  # ============================================== #
+  # realm
+  
+  facet_wrap(
+    ~ realm,
+    ncol = 2
+  ) +
+  
+  
+  # ============================================== #
+  # colors
+  
+  scale_fill_manual(
+    values = position_colors
+  ) +
+  
+  
+  scale_x_continuous(
+    limits = c(0, 1),
+    labels = scales::percent,
+    expand = c(0, 0)
+  ) +
+  
+  scale_y_continuous(
+    breaks = NULL,
+    limits = c(0, 1.2),
+    expand = c(0, 0)
+  ) +
+  
+  
+  labs(
+    x = "Proportion",
+    y = NULL,
+    fill = "Position"
+  ) +
+  
+  theme_void(base_size = 16) +
+  
+  theme(
+    legend.position = "top",
+    panel.grid = element_blank(),
+    strip.text = element_text(
+      size = 18,
+      face = "bold"
+    )
+  )
+
+
+# g_grad
+```
+
+
+#### refine 1: NOT USE
+
+```{r}
+#| eval: FALSE
+#| echo: FALSE
+#| fig-width: 8
+#| fig-height: 2
+
+# ============================================== #
+# position level
+
+bar_position <- rt_countobs %>%
+  count(
+    realm,
+    gradient,
+    position
+  ) %>%
+  group_by(realm) %>%
+  arrange(gradient, position, .by_group = TRUE) %>%
+  mutate(
+    prop = n / sum(n),
+    xmax = cumsum(prop),
+    xmin = lag(xmax, default = 0)
+  ) %>%
+  ungroup()
+
+
+# ============================================== #
+# gradient level
+
+bar_gradient <- bar_position %>%
+  group_by(
+    realm,
+    gradient
+  ) %>%
+  summarise(
+    xmin = min(xmin),
+    xmax = max(xmax),
+    x = (xmin + xmax) / 2,
+    .groups = "drop"
+  )
+
+
+# ============================================== #
+# gradient boundaries within position bar
+
+bar_gradient_boundary <- bar_gradient %>%
+  group_by(realm) %>%
+  arrange(xmin, .by_group = TRUE) %>%
+  filter(
+    xmax < 1
+  ) %>%
+  transmute(
+    realm,
+    boundary = xmax
+  ) %>%
+  ungroup()
+
+
+# ============================================== #
+# position colors
+
+n_position <- n_distinct(
+  bar_position$position
+)
+
+position_colors <- grDevices::hcl.colors(
+  n_position,
+  palette = "Pastel 1"
+)
+
+names(position_colors) <- sort(
+  unique(bar_position$position)
+)
+
+
+# ============================================== #
+# Plot
+
+g_grad <- ggplot() +
+  
+  # ---------------------------------------------- #
+  # gradient bar
+  
+  geom_rect(
+    data = bar_gradient,
+    aes(
+      xmin = xmin,
+      xmax = xmax,
+      ymin = 1,
+      ymax = 1.4
+    ),
+    fill = "white",
+    color = "black",
+    linewidth = 1.3
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # gradient text inside gradient bar
+  
+  geom_text(
+    data = bar_gradient,
+    aes(
+      x = x,
+      y = 1.2,
+      label = gradient
+    ),
+    inherit.aes = FALSE,
+    size = 4.5
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # position bar
+  
+  geom_rect(
+    data = bar_position,
+    aes(
+      xmin = xmin,
+      xmax = xmax,
+      ymin = 0,
+      ymax = 1,
+      fill = position
+    ),
+    color = "black",
+    linewidth = 0.5
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # thicker boundaries between gradients
+  # within position bar
+  
+  geom_segment(
+    data = bar_gradient_boundary,
+    aes(
+      x = boundary,
+      xend = boundary,
+      y = 0,
+      yend = 1
+    ),
+    inherit.aes = FALSE,
+    color = "black",
+    linewidth = 1.3
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # thicker outer border around entire position bar
+  
+  geom_rect(
+    data = bar_position %>%
+      distinct(realm),
+    aes(
+      xmin = 0,
+      xmax = 1,
+      ymin = 0,
+      ymax = 1
+    ),
+    inherit.aes = FALSE,
+    fill = NA,
+    color = "black",
+    linewidth = 1.3
+  ) +
+  
+  
+  # ============================================== #
+  # facets
+  
+  facet_wrap(
+    ~ realm,
+    ncol = 2
+  ) +
+  
+  
+  # ============================================== #
+  # colors
+  
+  scale_fill_manual(
+    values = position_colors
+  ) +
+  
+  
+  # ============================================== #
+  # scales
+  
+  scale_x_continuous(
+    limits = c(0, 1),
+    labels = scales::percent,
+    expand = c(0, 0)
+  ) +
+  
+  scale_y_continuous(
+    breaks = NULL,
+    limits = c(0, 1.4),
+    expand = c(0, 0)
+  ) +
+  
+  
+  # ============================================== #
+  # labels
+  
+  ggtitle("c) Gradient and position") +
+  
+  labs(
+    x = NULL,
+    y = NULL,
+    fill = "Position"
+  ) +
+  
+  
+  # ============================================== #
+  # theme
+  
+  theme_void(
+    base_size = 16
+  ) +
+  
+  theme(
+    legend.position = "bottom",
+    
+    
+    plot.title = element_text(
+      margin = margin(
+        b = 10
+      )
+    ),
+    
+    strip.text = element_text(
+      size = 18,
+      face = "bold"
+    ),
+    plot.margin = margin(
+      t = 10,
+      r = 0,
+      b = 0,
+      l = 0
+    )
+  )
+
+
+g_grad
+```
+
+
+
+#### refine 2: USE
+
+```{r}
+#| fig-width: 8
+#| fig-height: 2
+
+# ============================================== #
+# position level
+
+bar_position <- rt_countobs %>%
+  count(
+    realm,
+    gradient,
+    position
+  ) %>%
+  group_by(realm) %>%
+  arrange(gradient, position, .by_group = TRUE) %>%
+  mutate(
+    prop = n / sum(n),
+    xmax = cumsum(prop),
+    xmin = lag(xmax, default = 0)
+  ) %>%
+  ungroup()
+
+
+# ============================================== #
+# gradient level
+
+bar_gradient <- bar_position %>%
+  group_by(
+    realm,
+    gradient
+  ) %>%
+  summarise(
+    xmin = min(xmin),
+    xmax = max(xmax),
+    x = (xmin + xmax) / 2,
+    .groups = "drop"
+  )
+
+
+# ============================================== #
+# gradient label positions
+
+bar_gradient_label <- bar_gradient %>%
+  mutate(
+    prop = xmax - xmin
+  )
+
+
+# ============================================== #
+# large gradients: label inside bar
+
+bar_gradient_label_large <- bar_gradient_label %>%
+  filter(
+    prop >= 0.15
+  )
+
+
+# ============================================== #
+# small gradients: label outside bar
+
+bar_gradient_label_small <- bar_gradient_label %>%
+  filter(
+    prop < 0.15
+  ) %>%
+  group_by(realm) %>%
+  arrange(x, .by_group = TRUE) %>%
+  mutate(
+    label_id = row_number(),
+    label_row = (label_id - 1) %% 2,
+    
+    # shift edge labels slightly inward
+    label_x = case_when(
+      x < 0.1 ~ x + 0.08,
+      x > 0.9 ~ x - 0.08,
+      TRUE ~ x
+    ),
+    
+    label_y = 1.62 + 0.18 * label_row
+  ) %>%
+  ungroup() %>% 
+  mutate(
+    # edit manually
+    label_x = case_when(
+      realm == "Terrestrial" & gradient == "Longitude" ~ 0.84,
+      realm == "Terrestrial" & gradient == "Horizontal" ~ 0.9,
+      TRUE ~ label_x
+    )
+  )
+  
+
+# ============================================== #
+# gradient boundaries within position bar
+
+bar_gradient_boundary <- bar_gradient %>%
+  group_by(realm) %>%
+  arrange(xmin, .by_group = TRUE) %>%
+  filter(
+    xmax < 1
+  ) %>%
+  transmute(
+    realm,
+    boundary = xmax
+  ) %>%
+  ungroup()
+
+
+# ============================================== #
+# position colors
+
+n_position <- n_distinct(
+  bar_position$position
+)
+
+position_colors <- grDevices::hcl.colors(
+  n_position,
+  palette = "Pastel 1"
+)
+
+names(position_colors) <- sort(
+  unique(bar_position$position)
+)
+
+
+# ============================================== #
+# Plot
+
+g_grad <- ggplot() +
+  
+  # ---------------------------------------------- #
+  # gradient bar
+  
+  geom_rect(
+    data = bar_gradient,
+    aes(
+      xmin = xmin,
+      xmax = xmax,
+      ymin = 1,
+      ymax = 1.4
+    ),
+    fill = "white",
+    color = "black",
+    linewidth = 1.3
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # large gradient labels inside gradient bar
+  
+  geom_text(
+    data = bar_gradient_label_large,
+    aes(
+      x = x,
+      y = 1.2,
+      label = gradient
+    ),
+    inherit.aes = FALSE,
+    size = 6
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # connectors for small gradients
+  
+  geom_segment(
+    data = bar_gradient_label_small,
+    aes(
+      x = x,
+      xend = label_x,
+      y = 1.4,
+      yend = label_y - 0.1
+    ),
+    inherit.aes = FALSE,
+    linewidth = 0.5
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # small gradient labels outside gradient bar
+  
+  geom_text(
+    data = bar_gradient_label_small,
+    aes(
+      x = label_x,
+      y = label_y,
+      label = gradient
+    ),
+    inherit.aes = FALSE,
+    size = 6,
+    hjust = 0.5
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # position bar
+  
+  geom_rect(
+    data = bar_position,
+    aes(
+      xmin = xmin,
+      xmax = xmax,
+      ymin = 0,
+      ymax = 1,
+      fill = position
+    ),
+    color = "black",
+    linewidth = 0.5
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # thicker boundaries between gradients
+  # within position bar
+  
+  geom_segment(
+    data = bar_gradient_boundary,
+    aes(
+      x = boundary,
+      xend = boundary,
+      y = 0,
+      yend = 1
+    ),
+    inherit.aes = FALSE,
+    color = "black",
+    linewidth = 1.3
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # thicker outer border around entire position bar
+  
+  geom_rect(
+    data = bar_position %>%
+      distinct(realm),
+    aes(
+      xmin = 0,
+      xmax = 1,
+      ymin = 0,
+      ymax = 1
+    ),
+    inherit.aes = FALSE,
+    fill = NA,
+    color = "black",
+    linewidth = 1.3
+  ) +
+  
+  
+  # ============================================== #
+  # facets
+  
+  facet_wrap(
+    ~ realm,
+    ncol = 2
+  ) +
+  
+  
+  # ============================================== #
+  # colors
+  
+  scale_fill_manual(
+    values = position_colors
+  ) +
+  
+  
+  # ============================================== #
+  # scales
+  
+  scale_x_continuous(
+    limits = c(0, 1),
+    labels = scales::percent,
+    expand = c(0, 0)
+  ) +
+  
+  scale_y_continuous(
+    breaks = NULL,
+    limits = c(0, 1.9),
+    expand = c(0, 0)
+  ) +
+  
+  
+  # ============================================== #
+  # labels
+  
+  ggtitle("c) Gradient and position") +
+  
+  labs(
+    x = NULL,
+    y = NULL,
+    fill = "Position"
+  ) +
+  
+  
+  # ============================================== #
+  # theme
+  
+  theme_void(
+    base_size = 20
+  ) +
+  
+  theme(
+    legend.position = "bottom",
+    
+    
+    plot.title = element_text(
+      margin = margin(
+        b = 10
+      )
+    ),
+    
+    strip.text = element_text(
+      size = 18,
+      face = "bold"
+    )
+  )
+
+
+g_grad
+```
+
+
+
+
+### per information source
+
+```{r}
+#| fig-width: 8
+#| fig-height: 2
+
+# ============================================== #
+# information source per realm
+
+rt_temp <- rt_countobs %>%
+  
+  count(
+    realm,
+    information_source
+  ) %>%
+  
+  group_by(realm) %>%
+  
+  mutate(
+    prop = n / sum(n)
+  ) %>%
+  
+  ungroup()
+
+
+# ============================================== #
+# Plot
+
+
+
+g_info <- ggplot(
+  rt_temp, 
+  aes(
+    x = 1,
+    y = prop,
+    fill = information_source
+  )
+) +
+  
+  geom_col(
+    width = 0.7,
+    color = "white",
+    linewidth = 0.5
+  ) +
+  
+  coord_flip() +
+  
+  facet_wrap(
+    ~ realm,
+    ncol = 2
+  ) +
+  
+  scale_y_continuous(
+    labels = scales::percent,
+    expand = c(0, 0)
+  ) +
+  
+  labs(
+    x = NULL,
+    y = "Proportion",
+    fill = "Information source"
+  ) +
+  
+  theme_bw(base_size = 16) +
+  
+  theme(
+    legend.position = "top",
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    panel.grid = element_blank(),
+    strip.background = element_rect(
+      fill = "grey90"
+    )
+  )
+
+
+
+```
+
+
+#### refine color: USE
+
+```{r}
+#| fig-width: 8
+#| fig-height: 2
+
+# ============================================== #
+# information source colors
+
+information_sources <- sort(
+  unique(rt_countobs$information_source)
+)
+
+information_source_colors <- grDevices::hcl.colors(
+  length(information_sources),
+  palette = "Pastel 1"
+)
+
+names(information_source_colors) <- information_sources
+
+
+# ============================================== #
+# information source per realm
+
+rt_temp <- rt_countobs %>%
+  
+  count(
+    realm,
+    information_source
+  ) %>%
+  
+  group_by(realm) %>%
+  
+  mutate(
+    prop = n / sum(n)
+  ) %>%
+  
+  ungroup()
+
+# ============================================== #
+# Plot
+
+g_info <- ggplot(
+  rt_temp,
+  aes(
+    x = 1,
+    y = prop,
+    fill = information_source
+  )
+) +
+  
+  geom_col(
+    width = 0.7,
+    color = "black",
+    linewidth = 0.7
+  ) +
+  
+  coord_flip() +
+  
+  facet_wrap(
+    ~ realm,
+    ncol = 2
+  ) +
+  
+  scale_fill_manual(
+    values = information_source_colors
+  ) +
+  
+  scale_y_continuous(
+    labels = scales::percent,
+    expand = c(0, 0)
+  ) +
+  
+  ggtitle("d) Information source") +
+  
+  labs(
+    x = NULL,
+    y = NULL,
+    fill = ""
+  ) +
+  
+  theme_classic(
+    base_size = 20
+  ) +
+  
+  theme(
+    legend.position = "bottom",
+    
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.line.y = element_blank(),
+    
+    strip.background = element_blank(),
+    strip.text = element_text(
+      size = 18,
+      face = "bold"
+    )
+  )
+
+g_info
+```
+
+
+
+### Combine
+
+```{r}
+#| fig-width: 14
+#| fig-height: 14
+
+# g_realm
+# g_taxo
+# g_grad
+# g_info
+
+# ============================================== #
+# Combine plots vertically
+
+g_combined <- g_realm /
+  plot_spacer() /
+  g_taxo /
+  plot_spacer() /
+  g_grad /
+  plot_spacer() /
+  g_info +
+  
+  plot_layout(
+    ncol = 1,
+    heights = c(
+      2,
+      0.2,
+      3.4,
+      0.2,
+      3,
+      0.2,
+      2
+    )
+  )
+
+g_combined
+
+```
+
+
+
+## Time plot
 
 ### 1: row height varies with sample size
 
 ```{r}
+#| eval: FALSE
+#| echo: FALSE
 #| fig-width: 10
 #| fig-height: 8
 
@@ -1646,6 +4748,8 @@ ggplot(rt_temp, aes(y = obs_id, color = publication_id)) +
 ### 2: row height is fixed regardless of sample size
 
 ```{r}
+#| eval: FALSE
+#| echo: FALSE
 #| fig-width: 10
 #| fig-height: 8
 
@@ -2010,6 +5114,8 @@ ggplot(
 ### 3: row height is fixed regardless of sample size, start-start to end-end
 
 ```{r}
+#| eval: FALSE
+#| echo: FALSE
 #| fig-width: 10
 #| fig-height: 8
 
@@ -2370,72 +5476,447 @@ ggplot(
 
 ```
 
-
+### 4: row height is fixed regardless of sample size, start-start to end-end, different color setting
 
 ```{r}
-#| fig-width: 12
-#| fig-height: 12
-
+#| fig-width: 15
+#| fig-height: 9
 
 # ============================================== #
-# bar plot: count rows per ecosystem x gradient x position
+# Gantt chart-like plot of study duration per observation
+#
+# Equal vertical height for:
+#   1. each realm
+#   2. each reference within each realm
+
 
 rt_temp <- rt_cleaned %>%
-  count(
-    gradient,
-    ecosystem,
-    position,
-    realm
-  )
-
-
-p <- ggplot(
-  rt_temp,
-  aes(
-    x = ecosystem,
-    y = n,
-    fill = realm
-  )
-) +
   
-  geom_col(position = "stack") +
+  filter(
+    !is.na(startperiod_startyear),
+    !is.na(endperiod_endyear)
+  ) %>%
   
-  facet_grid2(
-    position ~ gradient,
-    scales = "free_x",
-    independent = "x"
-  ) +
   
-  labs(
-    x = "Ecosystem",
-    y = "Number of observations",
-    fill = "Realm",
-    title = "Number of observations per gradient per position"
-  ) +
+  # ---------------------------------------------- #
+  # First year represented by each publication
   
-  theme_bw(base_size = 16) +
+  group_by(realm, publication_id) %>%
+  mutate(
+    publication_start = min(
+      startperiod_startyear,
+      na.rm = TRUE
+    )
+  ) %>%
+  ungroup() %>%
   
-  theme(
-    axis.text.x = element_text(
-      angle = 30,
-      hjust = 1
+  
+  # ---------------------------------------------- #
+  # Arrange publications and observations
+  
+  arrange(
+    realm,
+    publication_start,
+    publication_id,
+    startperiod_startyear,
+    endperiod_endyear
+  ) %>%
+  
+  
+  # ---------------------------------------------- #
+  # Publication factor follows arranged order
+  
+  mutate(
+    publication_id = factor(
+      publication_id,
+      levels = unique(publication_id)
+    )
+  ) %>%
+  
+  
+  # ============================================== #
+  # Give each reference an equal-height band
+  # within each realm
+  
+  group_by(realm) %>%
+  mutate(
+    
+    # reference order within realm
+    reference_order = match(
+      publication_id,
+      unique(publication_id)
+    ),
+    
+    # number of references in realm
+    n_ref_realm = n_distinct(publication_id)
+    
+  ) %>%
+  ungroup() %>%
+  
+  
+  # ---------------------------------------------- #
+  # Give each observation a position within
+  # its reference band
+  
+  group_by(realm, publication_id) %>%
+  mutate(
+    
+    n_entry = n(),
+    obs_order = row_number(),
+    
+    # center of this reference's band
+    reference_center = (
+      reference_order - 0.5
+    ) / n_ref_realm,
+    
+    # total vertical height available
+    # to this reference
+    reference_height = 1 / n_ref_realm,
+    
+    # observation positions within reference band
+    #
+    # observations occupy 70% of the available
+    # reference band (±35% around the center)
+    obs_offset = if (n() == 1) {
+      
+      0
+      
+    } else {
+      
+      (
+        (obs_order - 1) / (n_entry - 1) - 0.5
+      ) * 0.7 * first(reference_height)
+      
+    },
+    
+    # final y position
+    obs_y = reference_center + obs_offset
+    
+  ) %>%
+  
+  ungroup() %>%
+  
+  mutate(
+    realm = factor(
+      realm,
+      levels = c("terrestrial", "marine"),
+      labels = c("Terrestrial", "Marine")
+    ),
+    census_linetype = case_when(
+      number_of_censuses == 2 ~ "2 censuses",
+      TRUE ~ ">2 censuses"
     )
   )
 
-suppressWarnings(print(p))
-```
+
+# ============================================== #
+# Reference labels
+#
+# Because each reference now has its own
+# equal-height band, simply use reference_center
+# as the label position.
 
 
-
-```{r}
-#| fig-width: 10
-#| fig-height: 5
+publication_labels <- rt_temp %>%
+  
+  group_by(
+    realm,
+    publication_id
+  ) %>%
+  
+  summarise(
+    label_y = first(reference_center),
+    n_entry = n(),
+    .groups = "drop"
+  ) %>%
+  
+  mutate(
+    publication_label = as.character(publication_id),
+    
+    publication_label = case_when(
+      
+      # References containing "et al."
+      stringr::str_detect(publication_label, " et al\\. ") ~
+        stringr::str_replace(
+          publication_label,
+          "^(.*?) et al\\. (.*)$",
+          "'\\1 '*italic('et al.')*' \\2'"
+        ),
+      
+      # References without "et al."
+      TRUE ~ paste0(
+        "'",
+        publication_label,
+        "'"
+      )
+    ),
+    
+    # Add italic (n = x)
+    publication_label = paste0(
+      publication_label,
+      "*' ('*italic(n == ",
+      n_entry,
+      ")*')'"
+    )
+  )
 
 
 # ============================================== #
-# boxplot per ecosystem x magnitude x gradient
+# Publication colors by realm
+# remove lightest 50% of each palette
 
-# convert to numeric (safe)
+publication_colors_df <- rt_temp %>%
+  distinct(
+    realm,
+    publication_id
+  ) %>%
+  group_by(realm) %>%
+  arrange(publication_id, .by_group = TRUE) %>%
+  mutate(
+    color = case_when(
+      
+      realm == "Marine" ~ {
+        
+        cols <- grDevices::hcl.colors(
+          ceiling(n() / 0.65),
+          palette = "Blues 3"
+        )
+        
+        # keep darkest 50%
+        cols[seq_len(n())]
+      },
+      
+      realm == "Terrestrial" ~ {
+        
+        cols <- grDevices::hcl.colors(
+          ceiling(n() / 0.65),
+          palette = "YlOrRd"
+        )
+        
+        # keep darkest 50%
+        cols[seq_len(n())]
+      },
+      
+      TRUE ~
+        grDevices::hcl.colors(
+          n(),
+          palette = "Dark 3"
+        )
+    )
+  ) %>%
+  ungroup()
+
+
+publication_colors <- publication_colors_df$color
+names(publication_colors) <- publication_colors_df$publication_id
+
+
+
+# ============================================== #
+# Visualize publication colors
+
+g <- ggplot(
+  publication_colors_df,
+  aes(
+    x = publication_id,
+    y = realm,
+    fill = color
+  )
+) +
+  
+  geom_tile(
+    color = "white",
+    linewidth = 0.5
+  ) +
+  
+  scale_fill_identity() +
+  
+  facet_wrap(
+    ~ realm,
+    scales = "free_x"
+  ) +
+  
+  labs(
+    x = "Publication",
+    y = NULL
+  ) +
+  
+  theme_bw(base_size = 18) +
+  
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(
+      angle = 90,
+      hjust = 1,
+      vjust = 0.5
+    ),
+    strip.background = element_rect(fill = "grey90")
+  )
+
+
+# ============================================== #
+# Plot
+
+ggplot(
+  rt_temp,
+  aes(
+    y = obs_y,
+    color = publication_id
+  )
+) +
+  
+  # ---------------------------------------------- #
+  # Study period
+  
+  geom_segment(
+    aes(
+      x = startperiod_startyear,
+      xend = endperiod_endyear,
+      yend = obs_y,
+      linetype = census_linetype
+    ),
+    linewidth = 1,
+    alpha = 1
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # Plus sign at first survey year
+  
+  geom_text(
+    aes(
+      x = startperiod_startyear,
+      y = obs_y
+    ),
+    label = "+",
+    color = "black",
+    size = 4,
+    vjust = 0.35,
+    show.legend = FALSE
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # Plus sign at final survey year
+  
+  geom_text(
+    aes(
+      x = endperiod_endyear,
+      y = obs_y
+    ),
+    label = "+",
+    color = "black",
+    size = 4,
+    vjust = 0.35,
+    show.legend = FALSE
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # Reference labels
+  
+  geom_text(
+    data = publication_labels,
+    aes(
+      x = -Inf,
+      y = label_y,
+      label = publication_label
+    ),
+    inherit.aes = FALSE,
+    parse = TRUE,
+    hjust = 1.05,
+    size = 5
+  ) +
+  
+  
+  # ============================================== #
+  # Scales
+  
+  scale_linetype_manual(
+    values = c(
+      "2 censuses" = "longdash",
+      ">2 censuses" = "solid"
+    )
+  ) +
+  
+  scale_color_manual(
+    values = publication_colors
+  ) +
+  
+  scale_x_continuous(
+    expand = expansion(
+      mult = c(0.02, 0.02)
+    )
+  ) +
+  
+  scale_y_reverse(
+    limits = c(1.02, -0.02),
+    expand = c(0, 0)
+  ) +
+  
+  
+  # ============================================== #
+  # Equal-height realm facets
+  
+  facet_grid2(
+    rows = vars(realm),
+    scales = "fixed",
+    space = "fixed"
+  ) +
+  
+  
+  coord_cartesian(
+    clip = "off"
+  ) +
+  
+  
+  labs(
+    x = "Year of record",
+    y = NULL
+  ) +
+  
+  
+  guides(
+    color = "none",
+    linetype = "none"
+  ) +
+  
+  
+  theme_bw(base_size = 18) +
+  
+  theme(
+    legend.position = "none",
+    
+    strip.placement = "outside",
+    strip.text.y.right = element_text(angle = 0),
+    strip.background = element_rect(fill = "grey90"),
+    
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    
+    panel.spacing.y = unit(0.15, "lines"),
+    
+    plot.margin = margin(
+      t = 5.5,
+      r = 5.5,
+      b = 5.5,
+      l = 220
+    )
+  )
+
+
+```
+
+
+## Magnitude of shift
+
+### rt_temp
+
+```{r}
+
 rt_temp <- rt_cleaned %>%
   filter(
     gradient != "na",
@@ -2443,12 +5924,46 @@ rt_temp <- rt_cleaned %>%
   ) %>%
   arrange(publication_year, publication_id) %>%
   mutate(
+    gradient = stringr::str_to_sentence(gradient),
+    kingdom = stringr::str_to_sentence(kingdom),
+    kingdom = factor(
+      kingdom,
+      levels = c(
+        "Chromista",
+        "Plantae",
+        "Animalia"
+      )
+    ),
+    
+    realm = stringr::str_to_sentence(realm),
+    realm = factor(
+      realm,
+      levels = c(
+        "Terrestrial",
+        "Marine"
+      )
+    ),
+    
     publication_id = factor(
       publication_id,
       levels = unique(publication_id)
     )
   )
 
+```
+
+
+### 1: facet plot
+
+```{r}
+#| eval: FALSE
+#| echo: FALSE
+#| fig-width: 10
+#| fig-height: 5
+
+
+# ============================================== #
+# per ecosystem x magnitude x gradient
 
 ggplot(rt_temp, aes(x = realm, y = magnitude_of_shift)) +
   
@@ -2485,13 +6000,1720 @@ ggplot(rt_temp, aes(x = realm, y = magnitude_of_shift)) +
   )
 ```
 
+### 2: patchwork 1
+
+```{r}
+#| eval: FALSE
+#| echo: FALSE
+#| fig-width: 10
+#| fig-height: 5
+
+
+# ============================================== #
+# common plotting function
+
+kingdom_colors <- c(
+  "Animalia" = "#0072B2",
+  "Plantae" = "#009E73",
+  "Chromista" = "#D55E00"
+)
+
+kingdom_shapes <- c(
+  "Animalia" = 16,
+  "Plantae" = 17,
+  "Chromista" = 15
+)
+
+
+
+make_shift_plot <- function(data, gradient_value, y_title) {
+  
+  ggplot(
+    data %>% filter(gradient == gradient_value),
+    aes(
+      x = realm,
+      y = magnitude_of_shift,
+      shape = kingdom,
+      color = kingdom
+    )
+  ) +
+    
+    geom_hline(
+      yintercept = 0,
+      color = "black",
+      linewidth = 0.6
+    ) +
+    
+    geom_jitter(
+      width = 0.2,
+      alpha = 0.8
+    ) +
+    
+    scale_shape_manual(
+      values = kingdom_shapes
+    ) +
+    
+    scale_color_manual(
+      values = kingdom_colors
+    ) +
+    
+    labs(
+      x = NULL,
+      y = y_title
+    ) +
+    
+    theme_bw(base_size = 16) +
+    
+    theme(
+      legend.position = "none"
+    )
+}
+
+
+# ============================================== #
+# Create manual kingdom legend
+
+legend_data <- tibble(
+  kingdom = factor(
+    c(
+      "Animalia",
+      "Plantae",
+      "Chromista"
+    ),
+    levels = c(
+      "Animalia",
+      "Plantae",
+      "Chromista"
+    )
+  ),
+  x = 1,
+  y = 1
+)
+
+
+legend_plot <- ggplot(
+  legend_data,
+  aes(
+    x = x,
+    y = y,
+    shape = kingdom,
+    color = kingdom
+  )
+) +
+  
+  geom_point(
+    size = 3
+  ) +
+  
+  scale_shape_manual(
+    values = kingdom_shapes
+  ) +
+  
+  scale_color_manual(
+    values = kingdom_colors
+  ) +
+  
+  labs(
+    shape = "Kingdom",
+    color = "Kingdom"
+  ) +
+  
+  theme_void(base_size = 16) +
+  
+  theme(
+    legend.position = "top"
+  )
+
+
+kingdom_legend <- cowplot::get_legend(
+  legend_plot
+)
+
+
+
+
+# ============================================== #
+# per ecosystem x magnitude x gradient
+
+g1 <- make_shift_plot(
+  rt_temp,
+  gradient_value = "Elevation",
+  y_title = "Elevational shift (m/year)"
+)
+
+g2 <- make_shift_plot(
+  rt_temp,
+  gradient_value = "Latitude",
+  y_title = "Latitudinal shift (km/year)"
+)
+
+g3 <- make_shift_plot(
+  rt_temp,
+  gradient_value = "Longitude",
+  y_title = "Longitudinal shift (km/year)"
+)
+
+g4 <- make_shift_plot(
+  rt_temp,
+  gradient_value = "Horizontal",
+  y_title = "Horizontal shift (km/year)"
+)
+
+g_main <- g1 + g2 + g3 + g4 +
+  plot_layout(
+    nrow = 1
+  )
+
+
+
+# ============================================== #
+# combine
+
+g <- patchwork::wrap_elements(
+  kingdom_legend
+) /
+  g_main +
+  plot_layout(
+    heights = c(0.08, 1)
+  )
+
+g
+
+
+
+
+
+
+
+```
+
+
+
+### 3: patchwork 2
+
+```{r}
+#| eval: FALSE
+#| echo: FALSE
+
+
+# ============================================== #
+# common plotting function
+
+kingdom_colors <- c(
+  "Animalia" = "#0072B2",
+  "Plantae" = "#009E73",
+  "Chromista" = "#D55E00"
+)
+
+kingdom_shapes <- c(
+  "Animalia" = 16,
+  "Plantae" = 17,
+  "Chromista" = 15
+)
+
+
+make_shift_plot <- function(data, gradient_value, y_title) {
+  
+  ggplot(
+    data %>% filter(gradient == gradient_value),
+    aes(
+      x = 1,
+      y = magnitude_of_shift,
+      shape = kingdom,
+      color = kingdom
+    )
+  ) +
+    
+    geom_hline(
+      yintercept = 0,
+      color = "black",
+      linewidth = 0.6
+    ) +
+    
+    geom_jitter(
+      width = 0.05,
+      height = 0,
+      alpha = 0.8,
+      size = 3
+    ) +
+    
+    scale_shape_manual(
+      values = kingdom_shapes
+    ) +
+    
+    scale_color_manual(
+      values = kingdom_colors
+    ) +
+    
+    facet_wrap(
+      ~ realm,
+      nrow = 2
+    ) +
+    
+    scale_x_continuous(
+      breaks = NULL
+    ) +
+    
+    labs(
+      x = NULL,
+      y = y_title
+    ) +
+    
+    theme_bw(base_size = 20) +
+    
+    theme(
+      legend.position = "none",
+      axis.ticks.x = element_blank(),
+      strip.background = element_rect(fill = "grey90")
+    )
+}
+
+# ============================================== #
+# Create manual kingdom legend
+
+legend_data <- tibble(
+  kingdom = factor(
+    c(
+      "Animalia",
+      "Plantae",
+      "Chromista"
+    ),
+    levels = c(
+      "Animalia",
+      "Plantae",
+      "Chromista"
+    )
+  ),
+  x = 1,
+  y = 1
+)
+
+
+legend_plot <- ggplot(
+  legend_data,
+  aes(
+    x = x,
+    y = y,
+    shape = kingdom,
+    color = kingdom
+  )
+) +
+  
+  geom_point(
+    size = 3
+  ) +
+  
+  scale_shape_manual(
+    values = kingdom_shapes
+  ) +
+  
+  scale_color_manual(
+    values = kingdom_colors
+  ) +
+  
+  labs(
+    shape = "Kingdom",
+    color = "Kingdom"
+  ) +
+  
+  theme_void(base_size = 20) +
+  
+  theme(
+    legend.position = "top"
+  )
+
+
+kingdom_legend <- cowplot::get_legend(
+  legend_plot
+)
+
+
+
+
+# ============================================== #
+# per ecosystem x magnitude x gradient
+
+g1 <- make_shift_plot(
+  rt_temp,
+  gradient_value = "Elevation",
+  y_title = "Elevational shift (m/year)"
+)
+
+g2 <- make_shift_plot(
+  rt_temp,
+  gradient_value = "Latitude",
+  y_title = "Latitudinal shift (km/year)"
+)
+
+g3 <- make_shift_plot(
+  rt_temp,
+  gradient_value = "Longitude",
+  y_title = "Longitudinal shift (km/year)"
+)
+
+g4 <- make_shift_plot(
+  rt_temp,
+  gradient_value = "Horizontal",
+  y_title = "Horizontal shift (km/year)"
+)
+
+g_main <- g1 + g2 + g3 + g4 +
+  plot_layout(
+    nrow = 1
+  )
+
+
+
+# ============================================== #
+# combine
+
+g <- patchwork::wrap_elements(
+  kingdom_legend
+) /
+  g_main +
+  plot_layout(
+    heights = c(0.08, 1)
+  )
+
+g
+
+
+
+
+
+
+
+```
+
+
+### 4: patchwork 3
+
+```{r}
+#| eval: FALSE
+#| echo: FALSE
+
+
+# ============================================== #
+# common plotting function
+
+kingdom_colors <- c(
+  "Animalia" = "#0072B2",
+  "Plantae" = "#009E73",
+  "Chromista" = "#D55E00"
+)
+
+kingdom_shapes <- c(
+  "Animalia" = 16,
+  "Plantae" = 17,
+  "Chromista" = 15
+)
+
+
+make_shift_plot <- function(data, gradient_value, y_title) {
+  
+  d <- data %>%
+    filter(
+      gradient == gradient_value
+    ) %>%
+    group_by(
+      realm,
+      gradient,
+      kingdom
+    ) %>%
+    mutate(
+      n_group = n()
+    ) %>%
+    ungroup()
+  
+  
+  # groups with enough observations for violin
+  d_violin <- d %>%
+    filter(
+      n_group > 5
+    )
+  
+  
+  ggplot(
+    d,
+    aes(
+      x = kingdom,
+      y = magnitude_of_shift
+    )
+  ) +
+    
+    # ---------------------------------------------- #
+    # zero line
+    
+    geom_hline(
+      yintercept = 0,
+      color = "black",
+      linewidth = 0.6
+    ) +
+    
+    
+    # ---------------------------------------------- #
+    # violin only for groups with > 5 observations
+    
+    geom_violin(
+      data = d_violin,
+      aes(
+        fill = kingdom,
+        color = kingdom
+      ),
+      width = 0.8,
+      alpha = 0.25,
+      linewidth = 0.8,
+      trim = FALSE
+    ) +
+    
+    
+    # ---------------------------------------------- #
+    # show points for ALL observations
+    
+    geom_jitter(
+      aes(
+        shape = kingdom,
+        color = kingdom
+      ),
+      width = 0.08,
+      height = 0,
+      size = 3,
+      alpha = 0.8
+    ) +
+    
+    
+    # ============================================== #
+    # scales
+    
+    scale_shape_manual(
+      values = kingdom_shapes
+    ) +
+    
+    scale_color_manual(
+      values = kingdom_colors
+    ) +
+    
+    scale_fill_manual(
+      values = kingdom_colors
+    ) +
+    
+    
+    # ============================================== #
+    # facets
+    
+    facet_wrap(
+      ~ realm,
+      nrow = 2
+    ) +
+    
+    
+    labs(
+      x = NULL,
+      y = y_title
+    ) +
+    
+    
+    theme_bw(base_size = 20) +
+    
+    theme(
+      legend.position = "none",
+      strip.background = element_rect(
+        fill = "grey90"
+      )
+    )
+}
+
+# ============================================== #
+# Create manual kingdom legend
+
+legend_data <- tibble(
+  kingdom = factor(
+    c(
+      "Animalia",
+      "Plantae",
+      "Chromista"
+    ),
+    levels = c(
+      "Animalia",
+      "Plantae",
+      "Chromista"
+    )
+  ),
+  x = 1,
+  y = 1
+)
+
+
+legend_plot <- ggplot(
+  legend_data,
+  aes(
+    x = x,
+    y = y,
+    shape = kingdom,
+    color = kingdom
+  )
+) +
+  
+  geom_point(
+    size = 3
+  ) +
+  
+  scale_shape_manual(
+    values = kingdom_shapes
+  ) +
+  
+  scale_color_manual(
+    values = kingdom_colors
+  ) +
+  
+  labs(
+    shape = "Kingdom",
+    color = "Kingdom"
+  ) +
+  
+  theme_void(base_size = 20) +
+  
+  theme(
+    legend.position = "top"
+  )
+
+
+kingdom_legend <- cowplot::get_legend(
+  legend_plot
+)
+
+
+
+
+# ============================================== #
+# per ecosystem x magnitude x gradient
+
+g1 <- make_shift_plot(
+  rt_temp,
+  gradient_value = "Elevation",
+  y_title = "Elevational shift (m/year)"
+)
+
+g2 <- make_shift_plot(
+  rt_temp,
+  gradient_value = "Latitude",
+  y_title = "Latitudinal shift (km/year)"
+)
+
+g3 <- make_shift_plot(
+  rt_temp,
+  gradient_value = "Longitude",
+  y_title = "Longitudinal shift (km/year)"
+)
+
+g4 <- make_shift_plot(
+  rt_temp,
+  gradient_value = "Horizontal",
+  y_title = "Horizontal shift (km/year)"
+)
+
+g_main <- g1 + g2 + g3 + g4 +
+  plot_layout(
+    nrow = 1
+  )
+
+
+
+# ============================================== #
+# combine
+
+g <- patchwork::wrap_elements(
+  kingdom_legend
+) /
+  g_main +
+  plot_layout(
+    heights = c(0.08, 1)
+  )
+
+g
+
+
+
+
+
+
+
+
+```
+
+
+### 5: patchwork 4
+
+```{r}
+#| eval: FALSE
+#| echo: FALSE
+#| fig-width: 16
+#| fig-height: 10
+
+
+# ============================================== #
+# common plotting function
+
+kingdom_colors <- c(
+  "Animalia" = "#0072B2",
+  "Plantae" = "#009E73",
+  "Chromista" = "#D55E00"
+)
+
+kingdom_shapes <- c(
+  "Animalia" = 16,
+  "Plantae" = 17,
+  "Chromista" = 15
+)
+
+
+make_shift_plot <- function(data, gradient_value, y_title) {
+  
+  d <- data %>%
+    filter(
+      gradient == gradient_value
+    ) %>%
+    group_by(
+      realm,
+      gradient,
+      kingdom
+    ) %>%
+    mutate(
+      n_group = n()
+    ) %>%
+    ungroup()
+  
+  
+  # groups with enough observations for violin
+  d_violin <- d %>%
+    filter(
+      n_group > 5
+    )
+  
+  
+  ggplot(
+    d,
+    aes(
+      x = kingdom,
+      y = magnitude_of_shift
+    )
+  ) +
+    
+    # ---------------------------------------------- #
+    # zero line
+    
+    geom_hline(
+      yintercept = 0,
+      color = "black",
+      linewidth = 0.6
+    ) +
+    
+    
+    # ---------------------------------------------- #
+    # violin only for groups with > 5 observations
+    
+    geom_violin(
+      data = d_violin,
+      aes(
+        fill = kingdom,
+        color = kingdom
+      ),
+      width = 0.8,
+      alpha = 0.25,
+      linewidth = 0.8,
+      trim = FALSE
+    ) +
+    
+    
+    # ---------------------------------------------- #
+    # show points for ALL observations
+    
+    geom_jitter(
+      aes(
+        shape = kingdom,
+        color = kingdom
+      ),
+      width = 0.08,
+      height = 0,
+      size = 3,
+      alpha = 0.8
+    ) +
+    
+    
+    # ============================================== #
+    # scales
+    
+    scale_shape_manual(
+      values = kingdom_shapes
+    ) +
+    
+    scale_color_manual(
+      values = kingdom_colors
+    ) +
+    
+    scale_fill_manual(
+      values = kingdom_colors
+    ) +
+    
+    
+    # ============================================== #
+    # facets
+    
+    facet_wrap(
+      ~ realm,
+      nrow = 2
+    ) +
+    
+    
+    labs(
+      x = NULL,
+      y = y_title
+    ) +
+    
+    
+    theme_bw(base_size = 20) +
+    
+    theme(
+      legend.position = "none",
+      strip.background = element_rect(
+        fill = "grey90"
+      ),
+      axis.text.x = element_text(
+        angle = 20,
+        hjust = 1
+      )
+    )
+}
+
+# ============================================== #
+# Create manual kingdom legend
+
+legend_data <- tibble(
+  kingdom = factor(
+    c(
+      "Animalia",
+      "Plantae",
+      "Chromista"
+    ),
+    levels = c(
+      "Animalia",
+      "Plantae",
+      "Chromista"
+    )
+  ),
+  x = 1,
+  y = 1
+)
+
+
+legend_plot <- ggplot(
+  legend_data,
+  aes(
+    x = x,
+    y = y,
+    shape = kingdom,
+    color = kingdom
+  )
+) +
+  
+  geom_point(
+    size = 3
+  ) +
+  
+  scale_shape_manual(
+    values = kingdom_shapes
+  ) +
+  
+  scale_color_manual(
+    values = kingdom_colors
+  ) +
+  
+  labs(
+    shape = "Kingdom",
+    color = "Kingdom"
+  ) +
+  
+  theme_void(base_size = 20) +
+  
+  theme(
+    legend.position = "top"
+  )
+
+
+kingdom_legend <- cowplot::get_legend(
+  legend_plot
+)
+
+
+
+
+
+# ============================================== #
+# per ecosystem x magnitude x gradient
+
+g1 <- make_shift_plot(
+  rt_temp,
+  gradient_value = "Elevation",
+  y_title = "Elevational shift (m/year)"
+)
+
+g2 <- make_shift_plot(
+  rt_temp,
+  gradient_value = "Latitude",
+  y_title = "Latitudinal shift (km/year)"
+)
+
+g3 <- make_shift_plot(
+  rt_temp,
+  gradient_value = "Longitude",
+  y_title = "Longitudinal shift (km/year)"
+)
+
+g4 <- make_shift_plot(
+  rt_temp,
+  gradient_value = "Horizontal",
+  y_title = "Horizontal shift (km/year)"
+)
+
+
+
+
+
+# ============================================== #
+# Horizontal shift circular plot 2
+# maximum = 20 km/year
+
+
+# marine
+rt_horizontal_20ma <- rt_temp %>%
+  filter(
+    gradient == "Horizontal",
+    realm == "Marine",
+    !is.na(azimuth_of_shift),
+    !is.na(magnitude_of_shift),
+    magnitude_of_shift <= 20
+  )
+
+
+g_horizontal_circular_20ma <- ggplot(
+  rt_horizontal_20ma,
+  aes(
+    x = azimuth_of_shift,
+    y = magnitude_of_shift,
+    color = kingdom,
+    shape = kingdom
+  )
+) +
+  
+  # ---------------------------------------------- #
+  # movement vector
+  
+  geom_segment(
+    aes(
+      xend = azimuth_of_shift,
+      y = 0,
+      yend = magnitude_of_shift
+    ),
+    linewidth = 0.5,
+    alpha = 0.5
+  ) +
+  
+  # ---------------------------------------------- #
+  # endpoint
+  
+  geom_point(
+    size = 3,
+    alpha = 0.8
+  ) +
+  
+  
+  # ============================================== #
+  # scales
+  
+  scale_x_continuous(
+    limits = c(0, 360),
+    breaks = c(
+      0, 45, 90, 135,
+      180, 225, 270, 315
+    ),
+    labels = c(
+      "N", "NE", "E", "SE",
+      "S", "SW", "W", "NW"
+    ),
+    expand = c(0, 0)
+  ) +
+  
+  scale_y_continuous(
+    limits = c(0, 20),
+    breaks = seq(0, 20, by = 5),
+    expand = c(0, 0)
+  ) +
+  
+  scale_shape_manual(
+    values = kingdom_shapes
+  ) +
+  
+  scale_color_manual(
+    values = kingdom_colors
+  ) +
+  
+  
+  # ============================================== #
+  # circular coordinates
+  
+  coord_polar(
+    theta = "x",
+    start = 0,
+    direction = 1
+  ) +
+  
+  labs(
+    x = NULL,
+    y = NULL
+  ) +
+  
+  theme_bw(base_size = 20) +
+  
+  theme(
+    legend.position = "none",
+    
+    plot.background = element_rect(
+      color = "white",
+      fill = "white",
+      linewidth = 0.8
+    ),
+    
+    plot.margin = margin(
+      5, 5, 5, 5
+    )
+  )
+
+g_horizontal_circular_20ma
+
+
+
+
+
+# terrestrial
+rt_horizontal_20te <- rt_temp %>%
+  filter(
+    gradient == "Horizontal",
+    realm == "Terrestrial",
+    !is.na(azimuth_of_shift),
+    !is.na(magnitude_of_shift),
+    magnitude_of_shift <= 20
+  )
+
+
+g_horizontal_circular_20te <- ggplot(
+  rt_horizontal_20te,
+  aes(
+    x = azimuth_of_shift,
+    y = magnitude_of_shift,
+    color = kingdom,
+    shape = kingdom
+  )
+) +
+  
+  # ---------------------------------------------- #
+  # movement vector
+  
+  geom_segment(
+    aes(
+      xend = azimuth_of_shift,
+      y = 0,
+      yend = magnitude_of_shift
+    ),
+    linewidth = 0.5,
+    alpha = 0.5
+  ) +
+  
+  # ---------------------------------------------- #
+  # endpoint
+  
+  geom_point(
+    size = 3,
+    alpha = 0.8
+  ) +
+  
+  
+  # ============================================== #
+  # scales
+  
+  scale_x_continuous(
+    limits = c(0, 360),
+    breaks = c(
+      0, 45, 90, 135,
+      180, 225, 270, 315
+    ),
+    labels = c(
+      "N", "NE", "E", "SE",
+      "S", "SW", "W", "NW"
+    ),
+    expand = c(0, 0)
+  ) +
+  
+  scale_y_continuous(
+    limits = c(0, 20),
+    breaks = seq(0, 20, by = 5),
+    expand = c(0, 0)
+  ) +
+  
+  scale_shape_manual(
+    values = kingdom_shapes
+  ) +
+  
+  scale_color_manual(
+    values = kingdom_colors
+  ) +
+  
+  
+  # ============================================== #
+  # circular coordinates
+  
+  coord_polar(
+    theta = "x",
+    start = 0,
+    direction = 1
+  ) +
+  
+  labs(
+    x = NULL,
+    y = NULL
+  ) +
+  
+  theme_bw(base_size = 20) +
+  
+  theme(
+    legend.position = "none",
+    
+    plot.background = element_rect(
+      color = "white",
+      fill = "white",
+      linewidth = 0.8
+    ),
+    
+    plot.margin = margin(
+      5, 5, 5, 5
+    )
+  )
+
+g_horizontal_circular_20te
+
+
+
+
+
+
+
+
+
+
+
+# ============================================== #
+# add circular plot as inset
+
+g4_add <- g4 +
+  patchwork::inset_element(
+    g_horizontal_circular_20ma,
+    left = 0.35,
+    bottom = 0.1,
+    right = 0.95,
+    top = 0.5,
+    align_to = "panel"
+  ) +
+  patchwork::inset_element(
+    g_horizontal_circular_20te,
+    left = 0.35,
+    bottom = 0.6,
+    right = 0.95,
+    top = 1.1,
+    align_to = "panel"
+  )
+
+
+g4_add
+
+
+
+g_main <- g1 + g2 + g3 + g4_add +
+  plot_layout(
+    nrow = 1
+  )
+
+
+
+
+
+# ============================================== #
+# combine
+
+g <- patchwork::wrap_elements(
+  kingdom_legend
+) /
+  g_main +
+  plot_layout(
+    heights = c(0.08, 1)
+  )
+
+g
+
+
+
+
+
+
+
+```
+
+### 6: patchwork 5
+
+#### ele, lat, lon
+
+```{r}
+#| fig-width: 10
+#| fig-height: 6
+
+
+# ============================================== #
+# common plotting function
+
+kingdom_colors <- c(
+  "Animalia" = "#0072B2",
+  "Plantae" = "#009E73",
+  "Chromista" = "#D55E00"
+)
+
+kingdom_shapes <- c(
+  "Animalia" = 16,
+  "Plantae" = 17,
+  "Chromista" = 15
+)
+
+
+make_shift_plot <- function(data, gradient_value, y_title, n_row) {
+  
+  d <- data %>%
+  filter(
+    gradient == gradient_value
+  ) %>%
+  mutate(
+    kingdom = factor(
+      kingdom,
+      levels = c(
+        "Chromista",
+        "Plantae",
+        "Animalia"
+      )
+    )
+  ) %>%
+  group_by(
+    realm,
+    gradient,
+    kingdom
+  ) %>%
+  mutate(
+    n_group = n()
+  ) %>%
+  ungroup()
+  
+  
+  # groups with enough observations for violin
+  d_violin <- d %>%
+    filter(
+      n_group > 5
+    )
+  
+  
+  ggplot(
+    d,
+    aes(
+      x = kingdom,
+      y = magnitude_of_shift
+    )
+  ) +
+    
+    # ---------------------------------------------- #
+    # zero line
+    
+    geom_hline(
+      yintercept = 0,
+      color = "black",
+      linewidth = 0.6
+    ) +
+    
+    
+    # ---------------------------------------------- #
+    # violin only for groups with > 5 observations
+    
+    geom_violin(
+      data = d_violin,
+      aes(
+        fill = kingdom,
+        color = kingdom
+      ),
+      width = 1,
+      alpha = 0.25,
+      linewidth = 0.8,
+      trim = FALSE
+    ) +
+    
+    
+    # ---------------------------------------------- #
+    # show points for ALL observations
+    
+    geom_jitter(
+      aes(
+        shape = kingdom,
+        color = kingdom
+      ),
+      width = 0.2,
+      height = 0,
+      size = 3,
+      alpha = 0.8
+    ) +
+    
+    
+    # ============================================== #
+    # scales
+    
+    scale_x_discrete(
+      limits = function(x) {
+        intersect(
+          c(
+            "Chromista",
+            "Plantae",
+            "Animalia"
+          ),
+          x
+        )
+      }
+    ) +
+    
+    
+    scale_shape_manual(
+      values = kingdom_shapes
+    ) +
+    
+    scale_color_manual(
+      values = kingdom_colors
+    ) +
+    
+    scale_fill_manual(
+      values = kingdom_colors
+    ) +
+    
+    
+    # ============================================== #
+    # facets
+    
+    facet_wrap(
+      ~ realm,
+      nrow = n_row
+    ) +
+    
+    
+    labs(
+      x = NULL,
+      y = y_title
+    ) +
+    
+    
+    theme_bw(base_size = 20) +
+    
+    theme(
+      legend.position = "none",
+      strip.background = element_rect(
+        fill = "grey90"
+      ),
+      axis.text.x = element_text(
+        angle = 20,
+        hjust = 1
+      )
+    )
+}
+
+# ============================================== #
+# Create manual kingdom legend
+
+legend_data <- tibble(
+  kingdom = factor(
+    c(
+      "Chromista",
+      "Plantae",
+      "Animalia"
+    ),
+    levels = c(
+      "Chromista",
+      "Plantae",
+      "Animalia"
+    )
+  ),
+  x = 1,
+  y = 1
+)
+
+
+legend_plot <- ggplot(
+  legend_data,
+  aes(
+    x = x,
+    y = y,
+    shape = kingdom,
+    color = kingdom
+  )
+) +
+  
+  geom_point(
+    size = 3
+  ) +
+  
+  scale_shape_manual(
+    values = kingdom_shapes
+  ) +
+  
+  scale_color_manual(
+    values = kingdom_colors
+  ) +
+  
+  labs(
+    shape = "Kingdom",
+    color = "Kingdom"
+  ) +
+  
+  theme_void(base_size = 20) +
+  
+  theme(
+    legend.position = "top"
+  )
+
+
+kingdom_legend <- cowplot::get_legend(
+  legend_plot
+)
+
+
+
+
+
+# ============================================== #
+# per ecosystem x magnitude x gradient
+
+g1 <- make_shift_plot(
+  rt_temp,
+  gradient_value = "Elevation",
+  y_title = "Elevational shift (m/year)",
+  n_row = 2
+)
+
+g2 <- make_shift_plot(
+  rt_temp,
+  gradient_value = "Latitude",
+  y_title = "Latitudinal shift (km/year)",
+  n_row = 2
+)
+
+g3 <- make_shift_plot(
+  rt_temp,
+  gradient_value = "Longitude",
+  y_title = "Longitudinal shift (km/year)",
+  n_row = 2
+)
+
+
+g_main <- g1 + g2 + g3 + 
+  plot_layout(
+    nrow = 1
+  )
+
+g_main
+```
+
+#### horizontal
+
+```{r}
+#| fig-width: 10
+#| fig-height: 6
+
+
+# ============================================== #
+# horizontal shift
+
+g4 <- make_shift_plot(
+  rt_temp,
+  gradient_value = "Horizontal",
+  y_title = "Horizontal shift (km/year)",
+  n_row = 1
+)
+
+
+
+
+# ============================================== #
+# Horizontal shift circular plot
+# maximum = 20 km/year
+
+
+# marine
+rt_horizontal_20ma <- rt_temp %>%
+  filter(
+    gradient == "Horizontal",
+    realm == "Marine",
+    !is.na(azimuth_of_shift),
+    !is.na(magnitude_of_shift),
+    magnitude_of_shift <= 20
+  )
+
+
+g_horizontal_circular_20ma <- ggplot(
+  rt_horizontal_20ma,
+  aes(
+    x = azimuth_of_shift,
+    y = magnitude_of_shift,
+    color = kingdom,
+    shape = kingdom
+  )
+) +
+  
+  # ---------------------------------------------- #
+  # movement vector
+  
+  geom_segment(
+    aes(
+      xend = azimuth_of_shift,
+      y = 0,
+      yend = magnitude_of_shift
+    ),
+    linewidth = 0.5,
+    alpha = 0.5
+  ) +
+  
+  # ---------------------------------------------- #
+  # endpoint
+  
+  geom_point(
+    size = 3,
+    alpha = 0.8
+  ) +
+  
+  
+  # ============================================== #
+  # scales
+  
+  scale_x_continuous(
+    limits = c(0, 360),
+    breaks = c(
+      0, 45, 90, 135,
+      180, 225, 270, 315
+    ),
+    labels = c(
+      "N", "NE", "E", "SE",
+      "S", "SW", "W", "NW"
+    ),
+    expand = c(0, 0)
+  ) +
+  
+  scale_y_continuous(
+    limits = c(0, 20),
+    breaks = seq(0, 20, by = 5),
+    expand = c(0, 0)
+  ) +
+  
+  scale_shape_manual(
+    values = kingdom_shapes
+  ) +
+  
+  scale_color_manual(
+    values = kingdom_colors
+  ) +
+  
+  
+  # ============================================== #
+  # circular coordinates
+  
+  coord_polar(
+    theta = "x",
+    start = 0,
+    direction = 1
+  ) +
+  
+  labs(
+    x = NULL,
+    y = NULL
+  ) +
+  
+  theme_bw(base_size = 20) +
+  
+  theme(
+    legend.position = "none",
+    
+    plot.background = element_rect(
+      color = "white",
+      fill = "white",
+      linewidth = 0.8
+    ),
+    
+    plot.margin = margin(
+      5, 5, 5, 5
+    )
+  )
+
+
+
+
+
+# terrestrial
+rt_horizontal_20te <- rt_temp %>%
+  filter(
+    gradient == "Horizontal",
+    realm == "Terrestrial",
+    !is.na(azimuth_of_shift),
+    !is.na(magnitude_of_shift),
+    magnitude_of_shift <= 20
+  )
+
+
+g_horizontal_circular_20te <- ggplot(
+  rt_horizontal_20te,
+  aes(
+    x = azimuth_of_shift,
+    y = magnitude_of_shift,
+    color = kingdom,
+    shape = kingdom
+  )
+) +
+  
+  # ---------------------------------------------- #
+  # movement vector
+  
+  geom_segment(
+    aes(
+      xend = azimuth_of_shift,
+      y = 0,
+      yend = magnitude_of_shift
+    ),
+    linewidth = 0.5,
+    alpha = 0.5
+  ) +
+  
+  # ---------------------------------------------- #
+  # endpoint
+  
+  geom_point(
+    size = 3,
+    alpha = 0.8
+  ) +
+  
+  
+  # ============================================== #
+  # scales
+  
+  scale_x_continuous(
+    limits = c(0, 360),
+    breaks = c(
+      0, 45, 90, 135,
+      180, 225, 270, 315
+    ),
+    labels = c(
+      "N", "NE", "E", "SE",
+      "S", "SW", "W", "NW"
+    ),
+    expand = c(0, 0)
+  ) +
+  
+  scale_y_continuous(
+    limits = c(0, 20),
+    breaks = seq(0, 20, by = 5),
+    expand = c(0, 0)
+  ) +
+  
+  scale_shape_manual(
+    values = kingdom_shapes
+  ) +
+  
+  scale_color_manual(
+    values = kingdom_colors
+  ) +
+  
+  
+  # ============================================== #
+  # circular coordinates
+  
+  coord_polar(
+    theta = "x",
+    start = 0,
+    direction = 1
+  ) +
+  
+  labs(
+    x = NULL,
+    y = NULL
+  ) +
+  
+  theme_bw(base_size = 20) +
+  
+  theme(
+    legend.position = "none",
+    
+    plot.background = element_rect(
+      color = "white",
+      fill = "white",
+      linewidth = 0.8
+    ),
+    
+    plot.margin = margin(
+      5, 5, 5, 5
+    )
+  )
+
+
+
+
+# g_horizontal_circular_20ma
+# g_horizontal_circular_20te
+
+
+
+
+
+
+# ============================================== #
+# add circular plot as inset
+
+g4_add <- g4 +
+  patchwork::inset_element(
+    g_horizontal_circular_20te,
+    left = 0.1,
+    right = 0.4,
+    bottom = 0.48,
+    top = 0.89,
+    align_to = "full"
+  ) +
+  patchwork::inset_element(
+    g_horizontal_circular_20ma,
+    left = 0.55,
+    right = 0.85,
+    bottom = 0.48,
+    top = 0.89,
+    align_to = "full"
+  )
+
+
+g4_add
+
+
+
+```
+
+
+## shift_tested
 
 ```{r}
 #| fig-width: 10
 #| fig-height: 5
 
 # ============================================== #
-# bar plot: count rows per ecosystem x shift_tested x gradient
+# count rows per ecosystem x shift_tested x gradient
 
 rt_temp <- rt_cleaned %>%
   filter(gradient != "na") %>%
