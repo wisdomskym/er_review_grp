@@ -4,8 +4,11 @@
 
 library(here)
 library(tidyverse)
-library(fs)
 library(quarto)
+
+library(terra)
+library(lme4)
+
 
 source(here("r", "render_helpers.R"))
 
