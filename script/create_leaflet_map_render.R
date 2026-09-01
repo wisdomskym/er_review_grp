@@ -7,7 +7,9 @@ library(tidyverse)
 library(quarto)
 
 library(terra)
-library(lme4)
+
+
+library(vegan)
 
 
 source(here("r", "render_helpers.R"))
