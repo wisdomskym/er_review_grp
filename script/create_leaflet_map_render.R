@@ -7,8 +7,6 @@ library(tidyverse)
 library(quarto)
 library(fs)
 
-# library(vegan)
-
 
 source(here("r", "render_helpers.R"))
 
