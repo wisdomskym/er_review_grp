@@ -3,7 +3,7 @@ title: "create_static_map"
 author: "tksym"
 date: today
 params:
-  in1: null
+  in1: "../data/polygon"
   in2: null
   dir_out: null
 format:
@@ -151,15 +151,15 @@ studyarea <- readr::read_csv(
 # !! Change path to local filename !! 
 
 relief1 <- terra::rast(
-  "C:/Users/wisdo/Dropbox/02_proj_cloud/GIS_data/naturalearth/HYP_HR_SR_OB_DR/HYP_HR_SR_OB_DR.tif"
+  "C:/Users/81801/Desktop/er_review_grp/naturalearth/HYP_HR_SR_OB_DR/HYP_HR_SR_OB_DR.tif"
 )
 
 relief2 <- terra::rast(
-  "C:/Users/wisdo/Dropbox/02_proj_cloud/GIS_data/naturalearth/NE1_HR_LC_SR_W_DR/NE1_HR_LC_SR_W_DR.tif"
+  "C:/Users/81801/Desktop/er_review_grp/naturalearth/NE1_HR_LC_SR_W_DR/NE1_HR_LC_SR_W_DR.tif"
 )
 
 relief3 <- terra::rast(
-  "C:/Users/wisdo/Dropbox/02_proj_cloud/GIS_data/naturalearth/NE2_HR_LC_SR_W_DR/NE2_HR_LC_SR_W_DR.tif"
+  "C:/Users/81801/Desktop/er_review_grp/naturalearth/NE2_HR_LC_SR_W_DR/NE2_HR_LC_SR_W_DR.tif"
 )
 
 
@@ -509,10 +509,11 @@ g <- ggplot() +
     color = "black",
     min.segment.length = 0,
     segment.color = "black",
-    segment.linewidth = 0.3,
+    segment.linewidth = 0.5,
     arrow = arrow(
-      length = unit(0.1, "cm"),
-      type = "closed"
+      length = unit(0.3, "cm"),
+      type = "closed",
+      ends = "first"
     ),
     seed = 1
   ) +
@@ -593,25 +594,25 @@ studyarea_label %>%
 
 label_manual <- tibble::tribble(
   ~shp_name, ~publication_no, ~point_x, ~point_y, ~label_x, ~label_y,
-  "e0009_koreastrait_cropped",                 "2",         125.1, 33.8, 125.1, 33.8, 
-  "e0029_daisetsu",                            "16",        143.1, 44,   140.0, 44,
-  "e0267_hakkoda",                             "12",        140.9, 40.7, 143.0, 40.7,
-  "e0400_recreate",                            "13",        136.0, 34.6, 138.0, 33.0,
-  "e0406_miyagi",                              "3",         140.8, 38.4, 143.0, 38.4,
-  "e0434_hokkaido_recreate_cropped",           "11",        144.0, 43.5, 144.0, 45.0,
-  "e1585_centralwesternsector_cropped",        "14",        136.1, 38.0, 136.0, 38.0,
-  "e1667_eastchina_recreate_cropped",          "17",        127.9, 33.1, 128.0, 33.1,
-  "e1667_pacificcoast_recreate_cropped",       "17",        133.9, 32.5, 138.0, 32.5,
-  "e1991_centralwesternsector_0mbuff_cropped", "5",         132.7, 36.8, 133.0, 36.8,
+  "e0009_koreastrait_cropped",                 "2",         125.1, 33.8, 125.1, 35.5, 
+  "e0029_daisetsu",                            "16",        143.1, 44,   143.9, 45.2,
+  "e0267_hakkoda",                             "12",        140.9, 40.7, 137.6, 42.0,
+  "e0400_recreate",                            "13",        136.0, 34.6, 138.0, 32.3,
+  "e0406_miyagi",                              "3",         140.8, 38.4, 145.3, 38.4,
+  "e0434_hokkaido_recreate_cropped",           "11",        144.0, 43.5, 146.2, 45.2,
+  "e1585_centralwesternsector_cropped",        "14",        136.1, 38.0, 136.1, 40.8,
+  "e1667_eastchina_recreate_cropped",          "17",        127.9, 33.1, 125.1, 32.5,
+  "e1667_pacificcoast_recreate_cropped",       "17",        133.9, 32.5, 133.9, 30.8,
+  "e1991_centralwesternsector_0mbuff_cropped", "5",         132.7, 36.8, 130.5, 36.8,
   "e2241_pacificcoast_cropped",                "1",         161.5, 43.6, 161.0, 43.6,
-  "e_jgm1_easterncoast_cropped",               "8",         141.0, 35.8, 141.0, 35.8,
-  "e_jgm1_westerncoast_cropped",               "8",         137.9, 37.3, 138.0, 37.3,
-  "e_saki1_mtfuji_recreate",                   "10",        138.7, 35.4, 139.0, 35.4,
-  "j0198_rishiri",                             "7",         141.2, 45.2, 140.0, 45.2,
-  "j_ogawa16_iwate",                           "18",        141.4, 39.6, 143.0, 39.6,
-  "j_ogawa1_recreate",                         "6",         134.1, 33,   134.0, 30.0,
-  "japan_recreate",                            "4",         140,   36,   143.0, 36.0,
-  "japan_marine_recreate_cropped",             "8, 9, 15", 143,   34,   146.0, 34
+  "e_jgm1_easterncoast_cropped",               "8",         141.0, 35.8, 145.0, 34.5,
+  "e_jgm1_westerncoast_cropped",               "8",         137.9, 37.3, 138.2, 39.6,
+  "e_saki1_mtfuji_recreate",                   "10",        138.7, 35.4, 145.0, 33.0,
+  "j0198_rishiri",                             "7",         141.2, 45.2, 139.4, 45.2,
+  "j_ogawa16_iwate",                           "18",        141.4, 39.6, 145.3, 39.9,
+  "j_ogawa1_recreate",                         "6",         134.1, 33,   136.5, 30.8,
+  "japan_recreate",                            "4",         140,   36,   145.0, 36.0,
+  "japan_marine_recreate_cropped",             "8, 9, 15",  143,   33,   144.5, 30.8
 )
 
 
@@ -627,8 +628,8 @@ studyarea_label2 <- studyarea_label %>%
     dy = point_y - label_y,
     dist = sqrt(dx^2 + dy^2),
 
-    seg_x = label_x + 0.4 * dx / dist,
-    seg_y = label_y + 0.4 * dy / dist
+    seg_x = label_x + 0.8 * dx / dist, #ラベルの根元をずらす
+    seg_y = label_y + 0.8 * dy / dist
   )
 
 
@@ -653,16 +654,16 @@ g <- ggplot() +
   geom_segment(
     data = studyarea_label2,
     aes(
-      x = seg_x,
+      x = seg_x, #根本
       y = seg_y,
-      xend = point_x,
+      xend = point_x, #先端
       yend = point_y
     ),
     inherit.aes = FALSE,
-    linewidth = 0.3,
+    linewidth = 0.4, #矢印の線の太さ
     color = "black",
     arrow = arrow(
-      length = unit(0.08, "cm"),
+      length = unit(0.15, "cm"), #矢じりの大きさ
       type = "closed"
     )
   ) +
