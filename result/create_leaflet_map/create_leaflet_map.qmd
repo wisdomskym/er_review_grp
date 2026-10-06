@@ -104,7 +104,7 @@ Output directory: `{r} fs::path_rel(dir_out)`
 
 # ============================================== #
 # table data
-studyarea <- read_xlsx(in1, sheet = "20260819_studyarea")
+studyarea <- read_xlsx(in1, sheet = "20261001_studyarea")
 
 
 

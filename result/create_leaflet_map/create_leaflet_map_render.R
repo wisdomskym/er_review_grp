@@ -18,7 +18,7 @@ projname <- "create_leaflet_map"
 qmd_file <- here("script", str_c(projname, ".qmd"))
 
 # in1: original review table
-in1 <- here("data", "20260819_ER_reviewtable_studyarea_polygoninfo.xlsx")
+in1 <- here("data", "20261001_ER_reviewtable_studyarea_polygoninfo.xlsx")
 
 
 # in2: polygon data
