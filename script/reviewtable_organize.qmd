@@ -49,6 +49,10 @@ pacman::p_load(
   # data manipulation
   tidyverse,
   
+  # analysis
+  lme4,
+  lmerTest,
+  
   # plot
   ggh4x,
   patchwork,
@@ -72,13 +76,6 @@ in2 <- params$in2
 dir_out <- params$dir_out
 
 
-# source file
-rts <- "C:/Users/wisdo/Dropbox/02_proj_cloud/_localrepo/basicscripts/script"
-source(here(rts, "othersettings.R"))
-# source(here(rts, "gs.R"))
-
-
-# 
 ```
 
 # WORK FLOW
@@ -391,26 +388,31 @@ ref_bind$author_year %>% unique()
 ref_bind$author_year %>% class()
 
 authors_recode <- c(
-  "Sakio & Masuzawa 2012" = "Sakio & Masuzawa 2012",
+  # "Sakio & Masuzawa 2012" = "Sakio & Masuzawa 2012",
   "Jung, S; Pang, IC; Lee, JH; Choi, I; Cha, HK 2014" = "Jung et al. 2014",
   "Winkler, DE; Amagai, Y; Huxman, TE; Kaneko, M; Kudo, G 2016" = "Winkler et al. 2016",
   "Shimazaki, M; Sasaki, T; Hikosaka, K; Nakashizuka, T 2011" = "Shimazaki et al. 2011",
   "Tougou, D; Musolin, DL; Fujisaki, K 2009" = "Tougou et al. 2009",
   "Kakehi, S; Narimatsu, Y; Okamura, Y; Yagura, A; Ito, S 2021" = "Kakehi et al. 2021",
   "Kurihara, T; Takami, H; Kosuge, T; Chiba, S; Iseda, M; Sasaki, T 2011" = "Kurihara et al. 2011",
-  "T Sakiyama 2024" = "Sakiyama 2024",
+  # "T Sakiyama 2024" = "Sakiyama 2024",
+  "Sakio, H; Masuzawa, T 2020" = "Sakio & Masuzawa 2020",
   "Naoki H. Kumagai, Jorge García Molinosa, Hiroya Yamano, Shintaro Takao, Masahiko Fujii, Yasuhiro Yamanaka 2018" = "Kumagai et al. 2018",
   "S. Watari, S. Takemura, H. Oyaizu 2024" = "Watari et al. 2024",
   "Tu, CY; Tian, YJ; Hsieh, CH 2015" = "Tu et al. 2015",
   "Yamano, H; Sugihara, K; Nomura, K 2011" = "Yamano et al. 2011",
   "Y Kawauchi, Y Yagi, T Yano, K Fujiwara 2023" = "Kawauchi et al. 2023",
+  "Koki Nagano; Masayoshi K. Hiraiwa \r\n ; Naoto Ishiwaka \r\n  ; Yugo Seko \r\n  ; Koya Hashimoto \r\n  ; Taizo Uchida \r\n  ; Francisco Sánchez-Bayo \r\n  ; Daisuke Hayasaka 2023" = "Nagano et al. 2023",
   "K Higashiguchi, S Nishijima, Y Kamimura… 2025" = "Higashiguchi et al. 2025",
   "Y Kawakami, K Yamazaki, K Ohashi 2014" = "Kawakami et al. 2014",
+  "Uemura et al. 2026 2026" = "Uemura et al. 2026",
+  "Sakiyama and Garcia Molinos 2026 2026" = "Sakiyama & García Molinos 2026",
   "山内 貴義, 工藤 雅志, 高槻 成紀 2007" = "Yamauchi et al. 2007",
   "北原 正彦 2008" = "Kitahara 2008",
   "木澤 遼; 濱 侃; 吉田 圭一郎 2022" = "Kizawa et al. 2022",
   "奥村 忠誠; 清水 庸; 大政 謙次 2009" = "Okumura et al. 2009"
 )
+
 
 
 # ------------ #
@@ -432,11 +434,14 @@ journal_recode <- c(
   "Regional studies in marine science" = "Regional Studies in Marine Science",
   "SSRN" = "SSRN",
   "Applied entomology and zoology" = "Applied Entomology and Zoology",
+  "Freshwater Biology" = "Freshwater Biology",
+  "biorxiv" = "bioRxiv",            
   "哺乳類科学" = "哺乳類科学",
   "昆虫と自然" = "昆虫と自然",
   "E-journal GEO" = "E-journal GEO",
   "環境科学会誌" = "環境科学会誌"
 )
+
 
 
 # ------------ #
@@ -561,6 +566,9 @@ ecosystem_recode <- c(
   # wetland
   "wetlands" = "wetland",
   
+  # freshwater
+  "freshwater" = "freshwater",
+  
   # marine
   "marine" = "marine",
   
@@ -586,6 +594,7 @@ realm_recode <- c(
   "forest" = "terrestrial",
   "grassland" = "terrestrial",
   "wetland" = "terrestrial",
+  "freshwater" = "terrestrial",
   
   # tentative terrestrial
   "urban" = "terrestrial",
@@ -1612,6 +1621,123 @@ rt_cleaned %>%
 ```
 
 
+# Analyze
+
+## Absolute rate ~ axis, realm, position
+
+```{r}
+
+# ============================================== #
+# Prepare horizontal range-shift data
+
+rt_temp <- rt_cleaned %>%
+  
+  # ---------------------------------------------- #
+  # Keep latitudinal and longitudinal shifts
+  
+  filter(
+    gradient %in% c("latitude", "longitude"),
+    !is.na(magnitude_of_shift)
+  ) %>%
+  
+  # ---------------------------------------------- #
+  # Create variables for analysis
+  
+  mutate(
+    
+    # Absolute range-shift rate (km/year)
+    shift_rate_abs = abs(magnitude_of_shift),
+    
+    # Direction of range shift
+    shift_direction = case_when(
+      magnitude_of_shift > 0 ~ "positive",
+      magnitude_of_shift < 0 ~ "negative",
+      magnitude_of_shift == 0 ~ "zero",
+      TRUE ~ NA_character_
+    ),
+    
+    # Make variables factors
+    gradient = factor(
+      gradient,
+      levels = c("latitude", "longitude")
+    ),
+    
+    realm = factor(
+      realm,
+      levels = c("terrestrial", "marine")
+    ),
+    
+    position = factor(position),
+    
+    shift_direction = factor(
+      shift_direction,
+      levels = c("negative", "positive", "zero")
+    ),
+    
+    publication_id = factor(publication_id),
+    taxonomic_unit_revised = factor(taxonomic_unit_revised)
+  )
+
+
+# ============================================== #
+# Check data
+
+rt_temp %>%
+  count(gradient, shift_direction)
+
+rt_temp %>%
+  count(realm, gradient)
+
+rt_temp %>%
+  count(position)
+
+summary(rt_temp$shift_rate_abs)
+
+
+# ============================================== #
+# Remove zero shifts for positive vs negative analysis
+
+# Zero has no direction, so exclude it from the model testing
+# positive vs negative shifts.
+
+rt_temp_model <- rt_temp %>%
+  filter(
+    shift_direction != "zero",
+    !is.na(shift_direction),
+    !is.na(realm),
+    !is.na(position),
+    !is.na(publication_id),
+    !is.na(taxonomic_unit_revised)
+  ) %>%
+  droplevels()
+
+
+# ============================================== #
+# Linear mixed-effects model
+
+mod_horizontal <- lmer(
+  
+  shift_rate_abs ~
+    gradient * shift_direction +
+    realm +
+    position +
+    (1 | publication_id) +
+    (1 | taxonomic_unit_revised),
+  
+  data = rt_temp_model
+)
+
+
+# ============================================== #
+# Model results
+
+summary(mod_horizontal)
+
+anova(mod_horizontal)
+
+```
+
+
 
 # Visualize
 
@@ -1669,6 +1795,7 @@ rt_temp <- rt_cleaned %>%
   arrange(
     realm,
     ecosystem,
+    focus,
     language
   ) %>% 
   
