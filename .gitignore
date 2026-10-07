@@ -17,4 +17,5 @@ output/*
 script/*/*
 
 # avoid heavy results
+result/create_leaflet_map/map_erreview_selfcont_files/*
 result/create_static_map/create_static_map.html

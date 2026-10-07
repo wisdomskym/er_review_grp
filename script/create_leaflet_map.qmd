@@ -135,8 +135,8 @@ shp_list <- shp_files |>
 # ============================================== #
 # import cleaned reviewdata table
 
-rt_cleaned <- readr::read_csv(
-  here("result", "reviewtable_organize", "rt_cleaned.csv")
+rt_table <- readr::read_csv(
+  here("result", "reviewtable_organize", "rt_table.csv")
 )
 
 
@@ -149,6 +149,8 @@ rt_cleaned <- readr::read_csv(
 # Basic flow
 
 ```{r}
+#| include: false
+#| eval: false
 
 names(shp_list)
 names(shp_list)[1]
@@ -197,35 +199,39 @@ htmlwidgets::saveWidget(
 # ============================================== #
 # edit reviewtable data
 
-rt_distinct <- rt_cleaned %>% 
-  distinct(reference_no, publication_id)
+rt_distinct <- rt_table %>% 
+  distinct(index, reference_no, publication_id)
 
+
+
+studyarea2 <- studyarea %>% 
+  select(-index) %>%
+  filter(memo == "use")
 
 
 # ============================================== #
-# filter out notuse data
-# match table data with polygon data
+# join study area data to review table
 
-studyarea2 <- studyarea %>%
-  filter(memo == "use") %>%
-  left_join(rt_distinct,
-            by = "reference_no") %>% 
+rt_distinct2 <- rt_distinct %>%
+  left_join(
+    studyarea2,
+    by = "reference_no"
+  ) %>%
   mutate(
     shp_name = tools::file_path_sans_ext(file_final),
     shp = shp_list[shp_name]
   )
 
 
-
 # ============================================== #
 # prepare polygon data for leaflet
 
-studyarea_cleaned <- studyarea2 %>%
+studyarea_cleaned <- rt_distinct2 %>%
   group_by(shp_name) %>%
   summarise(
     realm = first(realm),
-    reference_no = paste(
-      sort(unique(reference_no)),
+    index = paste(
+      sort(unique(index)),
       collapse = "<br>"
     ),
     publication_id = paste(
@@ -241,7 +247,7 @@ studyarea_cleaned <- studyarea2 %>%
       ~ as.numeric(sum(sf::st_area(.x)))
     )
   ) %>%
-  arrange(desc(area)) %>%
+  arrange(realm, desc(area)) %>%
   
   # assign colors separately within each realm
   group_by(realm) %>%
@@ -278,7 +284,7 @@ studyarea_cleaned <- studyarea2 %>%
 # one row per polygon, publication_ids combined with <br>
 studyarea_color <- studyarea_cleaned %>%
   select(
-    reference_no,
+    index,
     shp_name,
     realm,
     publication_id,
@@ -295,7 +301,7 @@ readr::write_csv(
 # one row per publication_id
 studyarea_color_expanded <- studyarea_color %>%
   tidyr::separate_rows(
-    reference_no,
+    index,
     publication_id,
     sep = "<br>"
   )
