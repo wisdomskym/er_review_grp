@@ -1,0 +1,22 @@
+index,reference_no,publication_id,language,area,realm,ecosystem,focus,observation,n_taxa,information_source,gradient,position
+1,E_saki2,Sakiyama & García Molinos 2026,en,"Hokkaido, Hokkaido",terrestrial,alpine,Animalia,occurrence,1,resurvey,elevation,"centroid, leading edge, trailing edge"
+2,E0029,Winkler et al. 2016,en,"Daisetsuzan National Park, Hokkaido",terrestrial,alpine,Plantae,abundance,1,remote sensing,elevation,leading edge
+3,E0410,Sakio & Masuzawa 2020,en,"Mt.Fuji, Shizuoka",terrestrial,alpine,Plantae,abundance,5,resurvey,elevation,leading edge
+4,J_ogawa16,Yamauchi et al. 2007,ja,"Goyozan mountain, Iwate",terrestrial,forest,Animalia,occurrence,1,scientific survey,latitude,leading edge
+5,E0267,Shimazaki et al. 2011,en,"Hakkoda Mountains, Aomori",terrestrial,subalpine,Plantae,abundance,1,remote sensing,elevation,centroid
+6,J0198,Kizawa et al. 2022,ja,"Mt.Rishiri, Hokkaido",terrestrial,subalpine,Plantae,occurrence,1,resurvey,elevation,leading edge
+7,E0400,Tougou et al. 2009,en,"Kii, Kii",terrestrial,terrestrial,Animalia,occurrence,1,resurvey,latitude,leading edge
+8,E2247,Kawakami et al. 2014,en,"Japan, Japan",terrestrial,terrestrial,Animalia,occurrence,1,literature and specimens,"horizontal, latitude, longitude",leading edge
+9,E_saito1,Nagano et al. 2023,en,"na, na",terrestrial,terrestrial,Animalia,occurrence,1,literature and specimens,"horizontal, latitude, longitude",leading edge
+10,J0201,Ueta et al. 2024,ja,"Japan, Japan",terrestrial,terrestrial,Animalia,occurrence,1,multiple sources,horizontal,others
+11,J_ogawa1,Kitahara 2008,ja,"West Japan, West Japan",terrestrial,terrestrial,Animalia,occurrence,1,literature and specimens,latitude,leading edge
+12,E_Ishiyama1,Uemura et al. 2026,en,"Hokkaido, Hokkaido",terrestrial,NA,Animalia,occurrence,1,resurvey,"elevation, latitude",centroid
+13,E0009,Jung et al. 2014,en,"Korea Strait, Japan",marine,marine,Animalia,abundance,12,fishery statistics,latitude,centroid
+14,E0406,Kakehi et al. 2021,en,"Miyagi, Tohoku",marine,marine,Animalia,abundance,5,scientific survey,"horizontal, latitude, longitude",centroid
+15,E0407,Kurihara et al. 2011,en,"Japan, Japan",marine,marine,Animalia,abundance,43,resurvey,latitude,"centroid, leading edge"
+16,E1585,Tu et al. 2015,en,"central-western sector, Sea of Japan",marine,marine,Animalia,abundance,19,fishery statistics,"horizontal, latitude, longitude",centroid
+17,E1667,Yamano et al. 2011,en,"East China, Pacific coast, East Asia, Japan",marine,marine,Animalia,occurrence,6,literature and specimens,latitude,leading edge
+18,E1991,Kawauchi et al. 2023,en,"central-western sector, Sea of Japan",marine,marine,Animalia,abundance,7,fishery statistics,"horizontal, latitude, longitude",centroid
+19,E2241,Higashiguchi et al. 2025,en,"Pacific coast, Tohoku",marine,marine,Animalia,abundance,2,scientific survey,"horizontal, latitude, longitude",centroid
+20,E_jgm1,Kumagai et al. 2018,en,"Eastern coast, Japan, Western coast, Japan",marine,marine,"Animalia, Chromista",occurrence,43,literature and specimens,horizontal,"centroid, leading edge, trailing edge"
+21,E_jgm2,Watari et al. 2024,en,"Japan, Japan",marine,marine,"Animalia, Chromista, Plantae",abundance,12,fishery statistics,"horizontal, latitude, longitude",centroid
