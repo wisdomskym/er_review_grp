@@ -1,25 +1,22 @@
-reference_no,shp_name,realm,publication_id,color
-E_jgm1,japan_marine_recreate_cropped,marine,Kumagai et al. 2018,#00366C
-E_jgm2,japan_marine_recreate_cropped,marine,Kurihara et al. 2011,#00366C
-E0407,japan_marine_recreate_cropped,marine,Watari et al. 2024,#00366C
-E2241,e2241_pacificcoast_cropped,marine,Higashiguchi et al. 2025,#00538E
-E0009,e0009_koreastrait_cropped,marine,Jung et al. 2014,#0072B4
-E_saito1,e_saito1_westjapan,terrestrial,Nagano et al. 2023,#7D0025
-E2247,japan_recreate,terrestrial,Kawakami et al. 2014,#A20706
-J0201,japan_recreate,terrestrial,Kawakami et al. 2014,#A20706
-E1585,e1585_centralwesternsector_cropped,marine,Tu et al. 2015,#468FD0
-E1991,e1991_centralwesternsector_0mbuff_cropped,marine,Kawauchi et al. 2023,#79ABE2
-E1667,e1667_pacificcoast_recreate_cropped,marine,Yamano et al. 2011,#A1C4F1
-E_jgm1,e_jgm1_easterncoast_cropped,marine,Kumagai et al. 2018,#C3DBFD
-E_jgm1,e_jgm1_westerncoast_cropped,marine,Kumagai et al. 2018,#E1EEFF
-E1667,e1667_eastchina_recreate_cropped,marine,Yamano et al. 2011,#F9F9F9
-E_ishiyama1,e0434_hokkaido,terrestrial,,#C32200
-J_ogawa1,j_ogawa1_recreate,terrestrial,Kitahara 2008,#E13C00
-E_saki2,e0434_hokkaido_recreate_cropped,terrestrial,Sakiyama & García Molinos 2026,#ED6200
-E0400,e0400_recreate,terrestrial,Tougou et al. 2009,#F28400
-J_ogawa16,j_ogawa16_iwate,terrestrial,Yamauchi et al. 2007,#F5A100
-E0406,e0406_miyagi,terrestrial,Kakehi et al. 2021,#F7BA3C
-E0029,e0029_daisetsu,terrestrial,Winkler et al. 2016,#F8D074
-E0410,e_saki1_mtfuji_recreate,terrestrial,Sakio & Masuzawa 2020,#FBE49A
-E0267,e0267_hakkoda,terrestrial,Shimazaki et al. 2011,#FFF4B7
-J0198,j0198_rishiri,terrestrial,Kizawa et al. 2022,#FFFFC8
+index,shp_name,realm,publication_id,color
+15,japan_marine_recreate_cropped,marine,Kumagai et al. 2018,#00366C
+20,japan_marine_recreate_cropped,marine,Kurihara et al. 2011,#00366C
+21,japan_marine_recreate_cropped,marine,Watari et al. 2024,#00366C
+19,e2241_pacificcoast_cropped,marine,Higashiguchi et al. 2025,#0066A5
+13,e0009_koreastrait_cropped,marine,Jung et al. 2014,#5295D4
+17,e1667_pacificcoast_eastchina_combined,marine,Yamano et al. 2011,#99BFEF
+16,e1585_centralwesternsector_cropped,marine,Tu et al. 2015,#D0E4FF
+18,e1991_centralwesternsector_0mbuff_cropped,marine,Kawauchi et al. 2023,#F9F9F9
+9,e_saito1_westjapan,terrestrial,Nagano et al. 2023,#7D0025
+8,japan_recreate,terrestrial,Kawakami et al. 2014,#A20706
+10,japan_recreate,terrestrial,Ueta et al. 2024,#A20706
+12,e0434_hokkaido,terrestrial,Uemura et al. 2026,#C32200
+11,j_ogawa1_recreate_removeislands,terrestrial,Kitahara 2008,#E13C00
+1,e0434_hokkaido_recreate_cropped,terrestrial,Sakiyama & García Molinos 2026,#ED6200
+7,e0400_recreate,terrestrial,Tougou et al. 2009,#F28400
+4,j_ogawa16_iwate,terrestrial,Yamauchi et al. 2007,#F5A100
+14,e0406_miyagi,terrestrial,Kakehi et al. 2021,#F7BA3C
+2,e0029_daisetsu,terrestrial,Winkler et al. 2016,#F8D074
+3,e_saki1_mtfuji_recreate,terrestrial,Sakio & Masuzawa 2020,#FBE49A
+5,e0267_hakkoda,terrestrial,Shimazaki et al. 2011,#FFF4B7
+6,j0198_rishiri,terrestrial,Kizawa et al. 2022,#FFFFC8
