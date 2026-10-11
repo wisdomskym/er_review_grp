@@ -151,30 +151,30 @@ studyarea <- readr::read_csv(
 
 # !! Change path to local filename !! 
 
-# relief1 <- terra::rast(
-#   "C:/Users/81801/Desktop/er_review_grp/naturalearth/HYP_HR_SR_OB_DR/HYP_HR_SR_OB_DR.tif"
-# )
-# 
-# relief2 <- terra::rast(
-#   "C:/Users/81801/Desktop/er_review_grp/naturalearth/NE1_HR_LC_SR_W_DR/NE1_HR_LC_SR_W_DR.tif"
-# )
-# 
-# relief3 <- terra::rast(
-#   "C:/Users/81801/Desktop/er_review_grp/naturalearth/NE2_HR_LC_SR_W_DR/NE2_HR_LC_SR_W_DR.tif"
-# )
-
-
 relief1 <- terra::rast(
-  "C:/Users/wisdo/Dropbox/02_proj_cloud/GIS_data/naturalearth/HYP_HR_SR_OB_DR/HYP_HR_SR_OB_DR.tif"
+  "C:/Users/81801/Desktop/er_review_grp/naturalearth/HYP_HR_SR_OB_DR/HYP_HR_SR_OB_DR.tif"
 )
 
 relief2 <- terra::rast(
-  "C:/Users/wisdo/Dropbox/02_proj_cloud/GIS_data/naturalearth/NE1_HR_LC_SR_W_DR/NE1_HR_LC_SR_W_DR.tif"
+  "C:/Users/81801/Desktop/er_review_grp/naturalearth/NE1_HR_LC_SR_W_DR/NE1_HR_LC_SR_W_DR.tif"
 )
 
 relief3 <- terra::rast(
-  "C:/Users/wisdo/Dropbox/02_proj_cloud/GIS_data/naturalearth/NE2_HR_LC_SR_W_DR/NE2_HR_LC_SR_W_DR.tif"
+  "C:/Users/81801/Desktop/er_review_grp/naturalearth/NE2_HR_LC_SR_W_DR/NE2_HR_LC_SR_W_DR.tif"
 )
+
+
+# relief1 <- terra::rast(
+#   "C:/Users/wisdo/Dropbox/02_proj_cloud/GIS_data/naturalearth/HYP_HR_SR_OB_DR/HYP_HR_SR_OB_DR.tif"
+# )
+# 
+# relief2 <- terra::rast(
+#   "C:/Users/wisdo/Dropbox/02_proj_cloud/GIS_data/naturalearth/NE1_HR_LC_SR_W_DR/NE1_HR_LC_SR_W_DR.tif"
+# )
+# 
+# relief3 <- terra::rast(
+#   "C:/Users/wisdo/Dropbox/02_proj_cloud/GIS_data/naturalearth/NE2_HR_LC_SR_W_DR/NE2_HR_LC_SR_W_DR.tif"
+# )
 
 
 
@@ -494,8 +494,8 @@ label_manual <- tibble::tribble(
   "e0029_daisetsu",                            143.1, 44,   143.9, 45.2,
   "e0267_hakkoda",                             140.9, 40.7, 137.6, 42.0,
   "e0400_recreate",                            136.0, 34.6, 138.0, 32.3,
-  "e0406_miyagi",                              140.8, 38.4, 145.3, 38.4,
-  "e0434_hokkaido",                            140.0, 43.5, 146.2, 45.2,
+  "e0406_miyagi",                              140.8, 38.4, 144.3, 38.4,
+  "e0434_hokkaido",                            140.0, 43.5, 137.6, 43.5,
   "e0434_hokkaido_recreate_cropped",           144.0, 43.5, 146.2, 45.2,
   "e1585_centralwesternsector_cropped",        136.1, 38.0, 136.1, 40.8,
   "e1667_eastchina_recreate_cropped",          127.9, 33.1, 125.1, 32.5,
@@ -505,9 +505,9 @@ label_manual <- tibble::tribble(
   "e_jgm1_easterncoast_cropped",               141.0, 35.8, 145.0, 34.5,
   "e_jgm1_westerncoast_cropped",               137.9, 37.3, 138.2, 39.6,
   "e_saito1_westjapan",                        131,   28,   134,   28,
-  "e_saki1_mtfuji_recreate",                   138.7, 35.4, 145.0, 33.0,
+  "e_saki1_mtfuji_recreate",                   138.7, 35.4, 141.0, 34.0,
   "j0198_rishiri",                             141.2, 45.2, 139.4, 45.2,
-  "j_ogawa16_iwate",                           141.4, 39.6, 145.3, 39.9,
+  "j_ogawa16_iwate",                           141.4, 39.6, 144.3, 39.9,
   "j_ogawa1_recreate",                         134.1, 33,   136.5, 30.8,
   "japan_recreate",                            140,   36,   145.0, 36.0,
   "japan_marine_recreate_cropped",             143,   33,   144.5, 30.8
@@ -639,13 +639,15 @@ g_terrestrial
 
 
 # add label of whole japan as text
-label_wholejapan <- str_c("Studies covering all of Japan: ", index_wholejapan)
+label_wholejapan <- str_c(
+"Studies covering
+ all of Japan: ", index_wholejapan)
 
 g_terrestrial2 <- g_terrestrial +
   annotate(
     "text",
-    x = 141,
-    y = 32,
+    x = 142,
+    y = 30,
     label = label_wholejapan,
     size = 8,
     color = "black"
