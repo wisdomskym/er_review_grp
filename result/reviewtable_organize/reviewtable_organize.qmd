@@ -1686,6 +1686,34 @@ rt_temp <- rt_cleaned %>%
 rt_temp %>%
   count(gradient, shift_direction)
 
+# ---- #
+# check
+
+rt_temp %>%
+  filter(
+    gradient == "latitude",
+    magnitude_of_shift == 0
+  ) %>%
+  select(
+    publication_id,
+    taxonomic_unit_revised,
+    realm,
+    position,
+    gradient,
+    magnitude_of_shift
+  ) %>%
+  arrange(publication_id) %>%
+  print(n = Inf, width = Inf)
+
+rt_temp %>%
+  filter(
+    gradient == "latitude",
+    magnitude_of_shift == 0
+  ) %>%
+  count(publication_id, sort = TRUE)
+# ---- #
+
+
 rt_temp %>%
   count(realm, gradient)
 
@@ -1736,255 +1764,152 @@ summary(mod_horizontal)
 
 anova(mod_horizontal)
 
+
+
+
+# in gt
+
+library(broom.mixed)
+library(gt)
+
+# ============================================== #
+# Extract fixed-effect coefficients
+
+coef_horizontal <- broom.mixed::tidy(
+  mod_horizontal,
+  effects = "fixed",
+  conf.int = TRUE,
+  conf.method = "Wald"
+)
+
+# ============================================== #
+# Create coefficient table
+
+gt_horizontal <- coef_horizontal %>%
+  select(
+    term,
+    estimate,
+    std.error,
+    df,
+    statistic,
+    p.value,
+    conf.low,
+    conf.high
+  ) %>%
+  gt() %>%
+  cols_label(
+    term = "Predictor",
+    estimate = "Estimate",
+    std.error = "SE",
+    df = "df",
+    statistic = "t",
+    p.value = "p",
+    conf.low = "95% CI lower",
+    conf.high = "95% CI upper"
+  ) %>%
+  fmt_number(
+    columns = c(
+      estimate,
+      std.error,
+      df,
+      statistic,
+      conf.low,
+      conf.high
+    ),
+    decimals = 2
+  ) %>%
+  fmt_number(
+    columns = p.value,
+    decimals = 3
+  ) %>%
+  tab_header(
+    title = "Horizontal range-shift rates",
+    subtitle = "Linear mixed-effects model of absolute shift rate (km/year)"
+  ) %>%
+  tab_source_note(
+    source_note = "Random intercepts: publication and taxonomic unit. N = 162."
+  )
+
+gt_horizontal
+
+
+
+# ============================================== #
+# Extract ANOVA results
+
+anova_horizontal <- anova(
+  mod_horizontal,
+  type = 3
+) %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column("term")
+
+# ============================================== #
+# Create ANOVA table
+
+gt_horizontal_anova <- anova_horizontal %>%
+  gt() %>%
+  cols_label(
+    term = "Predictor",
+    `Sum Sq` = "Sum Sq",
+    `Mean Sq` = "Mean Sq",
+    NumDF = "Num df",
+    DenDF = "Den df",
+    `F value` = "F",
+    `Pr(>F)` = "p"
+  ) %>%
+  fmt_number(
+    columns = c(
+      `Sum Sq`,
+      `Mean Sq`,
+      DenDF,
+      `F value`
+    ),
+    decimals = 2
+  ) %>%
+  fmt_number(
+    columns = `Pr(>F)`,
+    decimals = 3
+  ) %>%
+  tab_header(
+    title = "Type III ANOVA",
+    subtitle = "Satterthwaite approximation for degrees of freedom"
+  )
+
+gt_horizontal_anova
+
+
+# ============================================== #
+# Export coefficient table
+
+gtsave(
+  gt_horizontal,
+  filename = file.path(dir_out, "horizontal_coef.html")
+)
+
+gtsave(
+  gt_horizontal,
+  filename = file.path(dir_out, "horizontal_coef.png")
+)
+
+# ============================================== #
+# Export ANOVA table
+
+gtsave(
+  gt_horizontal_anova,
+  filename = file.path(dir_out, "horizontal_anova.html")
+)
+
+gtsave(
+  gt_horizontal_anova,
+  filename = file.path(dir_out, "horizontal_anova.png")
+)
+
 ```
 
 
 
 # Visualize
-
-## Tabulation
-
-```{r}
-# ============================================== #
-# tabulation
-
-rt_temp <- rt_cleaned %>%
-  
-  group_by(
-    reference_no,
-    publication_id,
-    language,
-    realm,
-    ecosystem,
-    information_source,
-    observation
-  ) %>%
-  
-  summarise(
-    
-    study_area = str_c(
-      sort(unique(study_area)),
-      collapse = ", "
-    ),
-    
-    specific_area = str_c(
-      sort(unique(specific_area)),
-      collapse = ", "
-    ),
-    
-    area = str_c(specific_area, ", ", study_area),
-    
-    focus = str_c(
-      sort(unique(kingdom)),
-      collapse = ", "
-    ),
-    
-    n_taxa = n_distinct(taxonomic_unit_revised),
-    
-    gradient = str_c(
-      sort(unique(gradient)),
-      collapse = ", "
-    ),
-    
-    position = str_c(
-      sort(unique(position)),
-      collapse = ", "
-    ),
-    
-    .groups = "drop"
-  ) %>%
-  
-  arrange(
-    realm,
-    ecosystem,
-    focus,
-    language
-  ) %>% 
-  
-  mutate(index = row_number()) %>%
-  
-  relocate(index, .before = everything()) %>%
-  
-  relocate(study_area, specific_area, area,
-           .after = language) %>% 
-  
-  relocate(focus, observation, n_taxa, information_source,
-           .after = ecosystem) %>% 
-  
-  select(-specific_area, -study_area)
-
-
-# ------------ #
-# save
-
-readr::write_csv(
-  rt_temp,
-  fs::path(dir_out, "rt_table.csv")
-)
-
-
-# ============================================== #
-# Prepare table
-
-# rt_temp$publication_id
-# rt_temp$area
-
-
-rt_temp_tab <- rt_temp %>%
-  
-  select(-reference_no) %>% 
-  
-  mutate(
-    
-    
-    # ---------------------------------------------- #
-    # area
-    
-    area = recode(
-      area,
-      "Mt.Fuji, Shizuoka" = "Mt. Fuji, Shizuoka",
-      "Hokkaido, Hokkaido" = "Central Hokkaido",
-      "Daisetsuzan National Park, Hokkaido" = "Daisetsuzan, Hokkaido",
-      "Hakkoda Mountains, Aomori" = "Hakkoda Mountains, Aomori",
-      "Mt.Rishiri, Hokkaido" = "Mt. Rishiri, Hokkaido",
-      "Goyozan mountain, Iwate" = "Goyozan Mountains, Iwate",
-      "Japan, Japan" = "Japan",
-      "Kii, Kii" = "Kii Region",
-      "West Japan, West Japan" = "West Japan",
-      "Pacific coast, Tohoku" = "Tohoku Region",
-      "Korea Strait, Japan" = "Korea Strait",
-      "Miyagi, Tohoku" = "Miyagi Prefecture",
-      "central-western sector, Sea of Japan" = "Sea of Japan",
-      "Eastern coast, Japan, Western coast, Japan" = "East and West of Japan",
-      "East China, Pacific coast, East Asia, Japan" = "East and West of Japan"
-    ),
-    
-    
-    
-    # ---------------------------------------------- #
-    # abbreviations
-    
-    realm = str_replace_all(
-      realm,
-      c(
-        "terrestrial" = "t",
-        "marine" = "m"
-      )
-    ),
-    
-    
-    observation = str_replace_all(
-      observation,
-      c(
-        "abundance" = "abu",
-        "occurrence" = "occ"
-      )
-    ),
-    
-    focus = str_replace_all(
-      focus,
-      c(
-        "Plantae" = "Pla",
-        "Animalia" = "Ani",
-        "Chromista" = "Chr"
-      )
-    ),
-    
-    gradient = str_replace_all(
-      gradient,
-      c(
-        "elevation" = "Ele",
-        "latitude" = "Lat",
-        "longitude" = "Lon",
-        "horizontal" = "Hor"
-      )
-    ),
-    
-    position = str_replace_all(
-      position,
-      c(
-        "leading edge" = "Lea",
-        "trailing edge" = "Tra",
-        "centroid" = "Cen"
-      )
-    ),
-    
-    
-    # ---------------------------------------------- #
-    # sentence case
-    
-    language = str_to_sentence(language),
-    realm = factor(
-      str_to_sentence(as.character(realm)),
-      levels = c("T", "M")
-    ),
-    ecosystem = str_to_sentence(as.character(ecosystem)),
-    information_source = str_to_sentence(information_source),
-    observation = str_to_sentence(observation)
-  ) %>%
-  
-  arrange(
-    realm,
-    ecosystem,
-    language
-  )  %>% 
-  
-  relocate(realm) %>%
-  
-  # ---------------------------------------------- #
-  # readable column names
-  
-  rename(
-    "Publication" = publication_id,
-    "Language" = language,
-    "Study area" = area,
-    "Realm" = realm,
-    "Ecosystem" = ecosystem,
-    "Information source" = information_source,
-    "Observation" = observation,
-    "Focus" = focus,
-    "No. taxa" = n_taxa,
-    "Gradient" = gradient,
-    "Position" = position
-  )
-
-# ============================================== #
-# Table
-
-rt_temp_gt <- rt_temp_tab %>%
-  gt() %>%
-  
-  cols_align(
-    align = "left",
-    columns = everything()
-  ) %>%
-  
-  # cols_align(
-  #   align = "center",
-  #   columns = c(
-  #     Language,
-  #     Focus,
-  #     `No. taxa`,
-  #     Gradient,
-  #     Position
-  #   )
-  # ) %>%
-  
-  tab_options(
-    table.font.size = 12,
-    data_row.padding = px(4)
-  )
-
-rt_temp_gt
-
-gtsave(
-  rt_temp_gt,
-  filename = file.path(dir_out, "rt_temp_gt.png"),
-  zoom = 2
-)
-```
-
-
 
 
 ## Count studies
@@ -4749,6 +4674,34 @@ rt_temp <- rt_cleaned %>%
   )
 
 
+
+# ============================================== #
+# Create publication index from time-plot order
+
+publication_index <- rt_temp %>%
+  distinct(
+    realm,
+    publication_id
+  ) %>%
+  mutate(
+    index = row_number()
+  ) %>%
+  select(
+    index,
+    realm,
+    publication_id
+  )
+
+
+# Add index to time-plot data
+rt_temp <- rt_temp %>%
+  left_join(
+    publication_index,
+    by = c("realm", "publication_id")
+  ) %>%
+  relocate(index, .before = everything())
+
+
 n_pub <- nlevels(rt_temp$publication_id)
 
 publication_colors <- colorspace::qualitative_hcl(
@@ -5613,6 +5566,8 @@ ggplot(
 ### 4: row height is fixed regardless of sample size, start-start to end-end, different color setting
 
 ```{r}
+#| eval: FALSE
+#| echo: FALSE
 #| fig-width: 15
 #| fig-height: 9
 
@@ -5743,6 +5698,36 @@ rt_temp <- rt_cleaned %>%
   )
 
 
+
+# ============================================== #
+# Create publication index from time-plot order
+
+publication_index <- rt_temp %>%
+  distinct(
+    realm,
+    publication_id
+  ) %>%
+  mutate(
+    index = row_number()
+  ) %>%
+  select(
+    index,
+    realm,
+    publication_id
+  )
+
+
+# Add index to time-plot data
+rt_temp <- rt_temp %>%
+  left_join(
+    publication_index,
+    by = c("realm", "publication_id")
+  ) %>%
+  relocate(index, .before = everything())
+
+
+
+
 # ============================================== #
 # Reference labels
 #
@@ -5759,10 +5744,11 @@ publication_labels <- rt_temp %>%
   ) %>%
   
   summarise(
+    index = first(index),
     label_y = first(reference_center),
     n_entry = n(),
     .groups = "drop"
-  ) %>%
+  ) %>% 
   
   mutate(
     publication_label = as.character(publication_id),
@@ -5785,8 +5771,18 @@ publication_labels <- rt_temp %>%
       )
     ),
     
-    # Add italic (n = x)
+    # # Add italic (n = x)
+    # publication_label = paste0(
+    #   publication_label,
+    #   "*' ('*italic(n == ",
+    #   n_entry,
+    #   ")*')'"
+    # )
+    # Add index and italic (n = x)
     publication_label = paste0(
+      "'",
+      index,
+      ". '*",
       publication_label,
       "*' ('*italic(n == ",
       n_entry,
@@ -5891,7 +5887,7 @@ g <- ggplot(
 # ============================================== #
 # Plot
 
-ggplot(
+g <- ggplot(
   rt_temp,
   aes(
     y = obs_y,
@@ -5959,6 +5955,7 @@ ggplot(
     inherit.aes = FALSE,
     parse = TRUE,
     hjust = 1.05,
+    # hjust = 0,
     size = 5
   ) +
   
@@ -6037,12 +6034,457 @@ ggplot(
       t = 5.5,
       r = 5.5,
       b = 5.5,
-      l = 220
+      l = 300
     )
   )
 
 
+
+
+
+# ============================================== #
+# Export PNG
+
+ggsave(
+  filename = file.path(dir_out, "study_period.png"),
+  plot = g,
+  width = 30,
+  height = 15,
+  units = "cm",
+  dpi = 300,
+  bg = "white",
+  limitsize = FALSE
+)
+
+
+# ============================================== #
+# Export RDS
+
+saveRDS(
+  object = g,
+  file = file.path(dir_out, "study_period.rds")
+)
+
 ```
+
+
+
+
+### 5: row height is fixed regardless of sample size, start-start to end-end, same color setting
+
+```{r}
+#| fig-width: 15
+#| fig-height: 9
+
+# ============================================== #
+# Gantt chart-like plot of study duration per observation
+#
+# Equal vertical height for:
+#   1. each realm
+#   2. each reference within each realm
+
+
+rt_temp <- rt_cleaned %>%
+  
+  filter(
+    !is.na(startperiod_startyear),
+    !is.na(endperiod_endyear)
+  ) %>%
+  
+  
+  # ---------------------------------------------- #
+  # First year represented by each publication
+  
+  group_by(realm, publication_id) %>%
+  mutate(
+    publication_start = min(
+      startperiod_startyear,
+      na.rm = TRUE
+    )
+  ) %>%
+  ungroup() %>%
+  
+  
+  # ---------------------------------------------- #
+  # Arrange publications and observations
+  
+  arrange(
+    realm,
+    publication_start,
+    publication_id,
+    startperiod_startyear,
+    endperiod_endyear
+  ) %>%
+  
+  
+  # ---------------------------------------------- #
+  # Publication factor follows arranged order
+  
+  mutate(
+    publication_id = factor(
+      publication_id,
+      levels = unique(publication_id)
+    )
+  ) %>%
+  
+  
+  # ============================================== #
+  # Give each reference an equal-height band
+  # within each realm
+  
+  group_by(realm) %>%
+  mutate(
+    
+    # reference order within realm
+    reference_order = match(
+      publication_id,
+      unique(publication_id)
+    ),
+    
+    # number of references in realm
+    n_ref_realm = n_distinct(publication_id)
+    
+  ) %>%
+  ungroup() %>%
+  
+  
+  # ---------------------------------------------- #
+  # Give each observation a position within
+  # its reference band
+  
+  group_by(realm, publication_id) %>%
+  mutate(
+    
+    n_entry = n(),
+    obs_order = row_number(),
+    
+    # center of this reference's band
+    reference_center = (
+      reference_order - 0.5
+    ) / n_ref_realm,
+    
+    # total vertical height available
+    # to this reference
+    reference_height = 1 / n_ref_realm,
+    
+    # observation positions within reference band
+    #
+    # observations occupy 70% of the available
+    # reference band (±35% around the center)
+    obs_offset = if (n() == 1) {
+      
+      0
+      
+    } else {
+      
+      (
+        (obs_order - 1) / (n_entry - 1) - 0.5
+      ) * 0.7 * first(reference_height)
+      
+    },
+    
+    # final y position
+    obs_y = reference_center + obs_offset
+    
+  ) %>%
+  
+  ungroup() %>%
+  
+  mutate(
+    realm = factor(
+      realm,
+      levels = c("terrestrial", "marine"),
+      labels = c("Terrestrial", "Marine")
+    ),
+    census_linetype = case_when(
+      number_of_censuses == 2 ~ "2 censuses",
+      TRUE ~ ">2 censuses"
+    )
+  )
+
+
+
+# ============================================== #
+# Create publication index from time-plot order
+
+publication_index <- rt_temp %>%
+  distinct(
+    realm,
+    publication_id
+  ) %>%
+  mutate(
+    index = row_number()
+  ) %>%
+  select(
+    index,
+    realm,
+    publication_id
+  )
+
+
+# Add index to time-plot data
+rt_temp <- rt_temp %>%
+  left_join(
+    publication_index,
+    by = c("realm", "publication_id")
+  ) %>%
+  relocate(index, .before = everything())
+
+
+
+
+# ============================================== #
+# Reference labels
+#
+# Because each reference now has its own
+# equal-height band, simply use reference_center
+# as the label position.
+
+
+publication_labels <- rt_temp %>%
+  
+  group_by(
+    realm,
+    publication_id
+  ) %>%
+  
+  summarise(
+    index = first(index),
+    label_y = first(reference_center),
+    n_entry = n(),
+    .groups = "drop"
+  ) %>% 
+  
+  mutate(
+    publication_label = as.character(publication_id),
+    
+    publication_label = case_when(
+      
+      # References containing "et al."
+      stringr::str_detect(publication_label, " et al\\. ") ~
+        stringr::str_replace(
+          publication_label,
+          "^(.*?) et al\\. (.*)$",
+          "'\\1 '*italic('et al.')*' \\2'"
+        ),
+      
+      # References without "et al."
+      TRUE ~ paste0(
+        "'",
+        publication_label,
+        "'"
+      )
+    ),
+    
+    # # Add italic (n = x)
+    # publication_label = paste0(
+    #   publication_label,
+    #   "*' ('*italic(n == ",
+    #   n_entry,
+    #   ")*')'"
+    # )
+    # Add index and italic (n = x)
+    publication_label = paste0(
+      "'",
+      index,
+      ". '*",
+      publication_label,
+      "*' ('*italic(n == ",
+      n_entry,
+      ")*')'"
+    )
+  )
+
+
+
+
+
+# ============================================== #
+# Plot
+
+g <- ggplot(
+  rt_temp,
+  aes(
+    y = obs_y,
+    color = realm
+  )
+) +
+  
+  # ---------------------------------------------- #
+  # Study period
+  
+  geom_segment(
+    aes(
+      x = startperiod_startyear,
+      xend = endperiod_endyear,
+      yend = obs_y,
+      linetype = census_linetype
+    ),
+    linewidth = 1,
+    alpha = 1
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # Plus sign at first survey year
+  
+  geom_text(
+    aes(
+      x = startperiod_startyear,
+      y = obs_y
+    ),
+    label = "+",
+    color = "black",
+    size = 4,
+    vjust = 0.35,
+    show.legend = FALSE
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # Plus sign at final survey year
+  
+  geom_text(
+    aes(
+      x = endperiod_endyear,
+      y = obs_y
+    ),
+    label = "+",
+    color = "black",
+    size = 4,
+    vjust = 0.35,
+    show.legend = FALSE
+  ) +
+  
+  
+  # ---------------------------------------------- #
+  # Reference labels
+  
+  geom_text(
+    data = publication_labels,
+    aes(
+      x = -Inf,
+      y = label_y,
+      label = publication_label
+    ),
+    inherit.aes = FALSE,
+    parse = TRUE,
+    hjust = 1.05,
+    # hjust = 0,
+    size = 5
+  ) +
+  
+  
+  # ============================================== #
+  # Scales
+  
+  scale_linetype_manual(
+    values = c(
+      "2 censuses" = "longdash",
+      ">2 censuses" = "solid"
+    )
+  ) +
+  
+  scale_color_manual(
+    values = c(
+      "Terrestrial" = "#D95F02",
+      "Marine" = "#2166AC"
+    )
+  ) +
+  
+  scale_x_continuous(
+    expand = expansion(
+      mult = c(0.02, 0.02)
+    )
+  ) +
+  
+  scale_y_reverse(
+    limits = c(1.02, -0.02),
+    expand = c(0, 0)
+  ) +
+  
+  
+  # ============================================== #
+  # Equal-height realm facets
+  
+  facet_grid2(
+    rows = vars(realm),
+    scales = "fixed",
+    space = "fixed"
+  ) +
+  
+  
+  coord_cartesian(
+    clip = "off"
+  ) +
+  
+  
+  labs(
+    x = "Year of record",
+    y = NULL
+  ) +
+  
+  
+  guides(
+    color = "none",
+    linetype = "none"
+  ) +
+  
+  
+  theme_bw(base_size = 18) +
+  
+  theme(
+    legend.position = "none",
+    
+    strip.placement = "outside",
+    strip.text.y.right = element_text(angle = 0),
+    strip.background = element_rect(fill = "grey90"),
+    
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    
+    panel.spacing.y = unit(0.15, "lines"),
+    
+    plot.margin = margin(
+      t = 5.5,
+      r = 5.5,
+      b = 5.5,
+      l = 300
+    )
+  )
+
+
+
+
+
+# ============================================== #
+# Export PNG
+
+ggsave(
+  filename = file.path(dir_out, "study_period.png"),
+  plot = g,
+  width = 30,
+  height = 15,
+  units = "cm",
+  dpi = 300,
+  bg = "white",
+  limitsize = FALSE
+)
+
+
+# ============================================== #
+# Export RDS
+
+saveRDS(
+  object = g,
+  file = file.path(dir_out, "study_period.rds")
+)
+
+```
+
 
 
 ## Magnitude of shift
@@ -7942,6 +8384,257 @@ ggplot(
 
 
 ```
+
+
+## Tabulation
+
+```{r}
+# ============================================== #
+# tabulation
+
+rt_temp <- rt_cleaned %>%
+  
+  group_by(
+    reference_no,
+    publication_id,
+    language,
+    realm,
+    ecosystem,
+    information_source,
+    observation
+  ) %>%
+  
+  summarise(
+    
+    study_area = str_c(
+      sort(unique(study_area)),
+      collapse = ", "
+    ),
+    
+    specific_area = str_c(
+      sort(unique(specific_area)),
+      collapse = ", "
+    ),
+    
+    area = str_c(specific_area, ", ", study_area),
+    
+    focus = str_c(
+      sort(unique(kingdom)),
+      collapse = ", "
+    ),
+    
+    n_taxa = n_distinct(taxonomic_unit_revised),
+    
+    gradient = str_c(
+      sort(unique(gradient)),
+      collapse = ", "
+    ),
+    
+    position = str_c(
+      sort(unique(position)),
+      collapse = ", "
+    ),
+    
+    .groups = "drop"
+  ) %>%
+  
+  relocate(study_area, specific_area, area,
+           .after = language) %>% 
+  
+  relocate(focus, observation, n_taxa, information_source,
+           .after = ecosystem) %>% 
+  
+  select(-specific_area, -study_area)
+
+
+# ============================================== #
+# Apply time-plot index to tabulation
+
+rt_temp <- rt_temp %>%
+  left_join(
+    publication_index %>%
+      select(publication_id, index),
+    by = "publication_id"
+  ) %>%
+  arrange(index) %>%
+  relocate(index, .before = everything())
+
+
+
+
+# ------------ #
+# save
+
+readr::write_csv(
+  rt_temp,
+  fs::path(dir_out, "rt_table.csv")
+)
+
+
+
+
+
+
+# ============================================== #
+# Prepare table
+
+# rt_temp$publication_id
+# rt_temp$area
+
+
+rt_temp_tab <- rt_temp %>%
+  
+  select(-reference_no) %>% 
+  
+  mutate(
+    
+    
+    # ---------------------------------------------- #
+    # area
+    
+    area = recode(
+      area,
+      "Mt.Fuji, Shizuoka" = "Mt. Fuji, Shizuoka",
+      "Hokkaido, Hokkaido" = "Central Hokkaido",
+      "Daisetsuzan National Park, Hokkaido" = "Daisetsuzan, Hokkaido",
+      "Hakkoda Mountains, Aomori" = "Hakkoda Mountains, Aomori",
+      "Mt.Rishiri, Hokkaido" = "Mt. Rishiri, Hokkaido",
+      "Goyozan mountain, Iwate" = "Goyozan Mountains, Iwate",
+      "Japan, Japan" = "Japan",
+      "Kii, Kii" = "Kii Region",
+      "West Japan, West Japan" = "West Japan",
+      "Pacific coast, Tohoku" = "Tohoku Region",
+      "Korea Strait, Japan" = "Korea Strait",
+      "Miyagi, Tohoku" = "Miyagi Prefecture",
+      "central-western sector, Sea of Japan" = "Sea of Japan",
+      "Eastern coast, Japan, Western coast, Japan" = "East and West of Japan",
+      "East China, Pacific coast, East Asia, Japan" = "East and West of Japan"
+    ),
+    
+    
+    
+    # ---------------------------------------------- #
+    # abbreviations
+    
+    realm = str_replace_all(
+      realm,
+      c(
+        "terrestrial" = "t",
+        "marine" = "m"
+      )
+    ),
+    
+    
+    observation = str_replace_all(
+      observation,
+      c(
+        "abundance" = "abu",
+        "occurrence" = "occ"
+      )
+    ),
+    
+    focus = str_replace_all(
+      focus,
+      c(
+        "Plantae" = "Pla",
+        "Animalia" = "Ani",
+        "Chromista" = "Chr"
+      )
+    ),
+    
+    gradient = str_replace_all(
+      gradient,
+      c(
+        "elevation" = "Ele",
+        "latitude" = "Lat",
+        "longitude" = "Lon",
+        "horizontal" = "Hor"
+      )
+    ),
+    
+    position = str_replace_all(
+      position,
+      c(
+        "leading edge" = "Lea",
+        "trailing edge" = "Tra",
+        "centroid" = "Cen"
+      )
+    ),
+    
+    
+    # ---------------------------------------------- #
+    # sentence case
+    
+    language = str_to_sentence(language),
+    realm = factor(
+      str_to_sentence(as.character(realm)),
+      levels = c("T", "M")
+    ),
+    ecosystem = str_to_sentence(as.character(ecosystem)),
+    information_source = str_to_sentence(information_source),
+    observation = str_to_sentence(observation)
+  ) %>%
+  
+  arrange(
+    index
+  )  %>% 
+  
+  relocate(realm) %>%
+  
+  # ---------------------------------------------- #
+  # readable column names
+  
+  rename(
+    "Publication" = publication_id,
+    "Index" = index,
+    "Language" = language,
+    "Study area" = area,
+    "Realm" = realm,
+    "Ecosystem" = ecosystem,
+    "Information source" = information_source,
+    "Observation" = observation,
+    "Focus" = focus,
+    "No. taxa" = n_taxa,
+    "Gradient" = gradient,
+    "Position" = position
+  )
+
+# ============================================== #
+# Table
+
+rt_temp_gt <- rt_temp_tab %>%
+  gt() %>%
+  
+  cols_align(
+    align = "left",
+    columns = everything()
+  ) %>%
+  
+  # cols_align(
+  #   align = "center",
+  #   columns = c(
+  #     Language,
+  #     Focus,
+  #     `No. taxa`,
+  #     Gradient,
+  #     Position
+  #   )
+  # ) %>%
+  
+  tab_options(
+    table.font.size = 12,
+    data_row.padding = px(4)
+  )
+
+rt_temp_gt
+
+gtsave(
+  rt_temp_gt,
+  filename = file.path(dir_out, "rt_temp_gt.png"),
+  zoom = 2
+)
+```
+
 
 
 
