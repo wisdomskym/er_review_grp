@@ -679,8 +679,7 @@ g_terrestrial
 
 # add label of whole japan as text
 label_wholejapan <- str_c(
-"Studies covering
- all of Japan: ", index_wholejapan)
+"Nationwide study: ", index_wholejapan)
 
 g_terrestrial2 <- g_terrestrial +
   annotate(
