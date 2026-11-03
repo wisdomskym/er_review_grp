@@ -1,6 +1,13 @@
 
+library(here)
 library(ggplot2)
 library(patchwork)
+
+
+rts <- "C:/Users/wisdo/Dropbox/02_proj_cloud/_localrepo/basicscripts/script"
+source(here(rts, "render_helpers.R"))
+source(here(rts, "othersettings.R"))
+
 
 # ============================================== #
 # Settings ----
@@ -38,7 +45,7 @@ relief1_japan <- terra::unwrap(
 
 
 # time plot
-g_time <- readRDS(
+g_time_orig <- readRDS(
   file.path("result", "reviewtable_organize", "study_period.rds")
 )
 
@@ -72,34 +79,88 @@ g_terr2 <- restore_rgb(g_terr2, relief1_japan)
 
 
 
+
+
+# ============================================== #
+# Inspect text size
+
+# # Overall structure
+# str(g_terr2, max.level = 2)
+
+
+# # # Overall structure
+# str(g_time_orig, max.level = 2)
+
+
+
+
+# ============================================== #
+# Adjust text sizes (picked up by GPT)
+
+# Study indices (geom_text)
+g_terr2$layers[[5]]$aes_params$size <- 4
+g_marine$layers[[5]]$aes_params$size <- 4
+
+# Annotation text
+g_terr2$layers[[6]]$aes_params$size <- 4
+
+
+
+
+
+# Geom text layers
+g_time_orig$layers[[2]]$aes_params$size <- 2.5
+g_time_orig$layers[[3]]$aes_params$size <- 2.5
+g_time_orig$layers[[4]]$aes_params$size <- 2.5
+
+# Theme text
+g_time_orig <- g_time_orig +
+  theme(
+    text = element_text(size = 12),
+    axis.title.x = element_text(size = 12),
+    axis.text.x = element_text(size = 10),
+    strip.text = element_text(size = 10),
+    
+    # Plot margins: top, right, bottom, left
+    plot.margin = margin(
+      t = 5,
+      r = 5,
+      b = 5,
+      l = 170,
+      unit = "pt"
+    )
+  )
+
 # ============================================== #
 # Add panel labels
+
+labelsize <- 11
 
 g_terr2 <- g_terr2 +
   labs(tag = "A") +
   theme(
-    plot.tag = element_text(face = "bold", size = 16),
+    plot.tag = element_text(face = "bold", size = labelsize),
     plot.tag.position = c(0.02, 0.98)
   )
 
 g_marine <- g_marine +
   labs(tag = "B") +
   theme(
-    plot.tag = element_text(face = "bold", size = 16),
+    plot.tag = element_text(face = "bold", size = labelsize),
     plot.tag.position = c(0.02, 0.98)
   )
 
 # ============================================== #
 # Add label outside the plot panel
 
-g_time <- cowplot::ggdraw(g_time) +
+g_time <- cowplot::ggdraw(g_time_orig) +
   cowplot::draw_plot_label(
     label = "C",
     x = 0.01,
     y = 0.98,
     hjust = 0,
     vjust = 1,
-    size = 16,
+    size = 11,
     fontface = "bold"
   )
 
@@ -112,7 +173,7 @@ g_maps <- (
   g_terr2 | plot_spacer() | g_marine
 ) +
   plot_layout(
-    widths = c(1, 0.05, 1)
+    widths = c(1, 0.02, 1)
   )
 
 
@@ -131,8 +192,7 @@ g_combined <- (
     heights = c(1, 1.2)
   )
 
-g_combined
-
+# g_combined
 
 
 
@@ -162,10 +222,10 @@ g_combined
 ggsave(
   filename = file.path(dir_out, "combined_studyarea_time.png"),
   plot = g_combined,
-  width = 30,
-  height = 30,
+  width = 20,
+  height = 25,
   units = "cm",
-  dpi = 600,
+  dpi = 300,
   bg = "white"
 )
 
@@ -176,12 +236,22 @@ ggsave(
 ggsave(
   filename = file.path(dir_out, "combined_studyarea_time.pdf"),
   plot = g_combined,
-  width = 30,
-  height = 30,
+  width = 20,
+  height = 20,
   units = "cm",
   device = cairo_pdf
 )
 
+
+# svg
+ggsave(
+  filename = file.path(dir_out, "combined_studyarea_time.svg"),
+  plot = g_combined,
+  width = 20,
+  height = 20,
+  units = "cm",
+  device = "svg"
+)
 
 # ============================================== #
 # Export RDS
