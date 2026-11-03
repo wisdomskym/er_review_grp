@@ -19,3 +19,21 @@ script/*/*
 # avoid heavy results
 result/create_leaflet_map/map_erreview_selfcont_files/*
 result/create_static_map/create_static_map.html
+
+
+# ignore all files in the folder
+result/create_leaflet_map/*
+result/create_static_map/*
+result/combine_map_time/*
+result/reviewtable_organize/*
+
+# except this file
+!result/create_leaflet_map/create_leaflet_map_render.R
+!result/create_leaflet_map/studyarea_color_expanded.csv
+
+!result/create_static_map/create_static_map_render.R
+
+!result/combine_map_time/combine_map_time.R
+
+!result/reviewtable_organize/reviewtable_organize_render.R
+!result/reviewtable_organize/rt_cleaned.csv
