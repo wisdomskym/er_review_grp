@@ -1,0 +1,216 @@
+---
+title: "prisma_diagram"
+author: "tksym"
+date: today
+params:
+  in1: null
+  in2: null
+  dir_out: null
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    toc-location: right
+    fig-format: png
+    embed-resources: true
+    self-contained-math: true
+    code-fold: true
+    code-overflow: wrap
+  pdf:
+    toc: false
+editor: 
+  mode: source
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+knitr::opts_chunk$set(
+  fig.width = 16,
+  fig.height = 9,
+  dpi = 400,
+  out.width = "100%",
+  fig.align = "center",
+  cache = FALSE
+)
+
+time_start <- Sys.time()
+```
+
+```{r}
+#| label: packages
+
+pacman::p_load(
+  # data import
+  here,
+  fs,
+  readr,
+
+  # data manipulation
+  tidyverse,
+
+  # PRISMA flow diagram
+  PRISMA2020,
+  DiagrammeRsvg,
+  rsvg,
+
+  # misc
+  sessioninfo
+)
+
+
+```
+
+```{r}
+#| label: othersettings
+#| include: false
+
+# assign from outside
+in1 <- params$in1
+in2 <- params$in2
+dir_out <- params$dir_out
+
+```
+
+# WORK FLOW
+
+- Import PRISMA review counts
+- Convert to `PRISMA2020` data
+- Draw PRISMA 2020 flow diagram
+- Export PNG and PDF versions
+
+# DATA
+
+PRISMA input table: `{r} if (!is.null(in1) && nzchar(in1)) fs::path_rel(in1) else "PRISMA2020 package template"`
+
+Output directory: `{r} fs::path_rel(dir_out)`
+
+
+
+# Import
+
+```{r}
+# ============================================== #
+# PRISMA data
+
+prisma_raw <- readr::read_csv(
+    here("data", in1),
+    show_col_types = FALSE
+  )
+
+prisma_raw
+```
+
+# Edit data
+
+```{r}
+# ============================================== #
+# convert the input table to the format required
+# by PRISMA2020
+
+prisma_data <- PRISMA2020::PRISMA_data(prisma_raw)
+```
+
+# Visualize
+
+```{r}
+#| label: prisma-flow-diagram
+#| echo: true
+
+# ============================================== #
+# PRISMA 2020 flow diagram
+
+# This review is treated as a new review:
+# previous = FALSE removes the previous-review arm.
+# other = FALSE keeps only identification via databases/registers.
+# Change these arguments if other search routes were used.
+
+prisma_plot <- PRISMA2020::PRISMA_flowdiagram(
+  data = prisma_data,
+  detail_databases = TRUE,
+  interactive = FALSE,
+  previous = FALSE,
+  other = TRUE,
+  side_boxes = TRUE,
+  fontsize = 12
+)
+
+prisma_plot
+```
+
+# Export
+
+```{r}
+# ============================================== #
+# export static versions
+
+# Export settings
+dpi <- 200
+width_in <- 12
+height_in <- 8
+
+width_px <- width_in * dpi
+height_px <- height_in * dpi
+
+
+# ============================================== #
+# PNG
+
+PRISMA2020::PRISMA_save(
+  plotobj = prisma_plot,
+  filename = file.path(
+    dir_out,
+    "prisma_diagram.png"
+  ),
+  overwrite = TRUE,
+  width = width_px,
+  height = height_px
+)
+
+
+# ============================================== #
+# PDF
+
+PRISMA2020::PRISMA_save(
+  plotobj = prisma_plot,
+  filename = file.path(
+    dir_out,
+    "prisma_diagram.pdf"
+  ),
+  overwrite = TRUE
+)
+
+```
+
+
+
+
+
+# Session info
+
+```{r}
+#| label: session-info
+
+sessioninfo::session_info()
+```
+
+```{r}
+#| label: run-info
+#| echo: false
+
+time_end <- Sys.time()
+elapsed_sec <- as.numeric(difftime(time_end, time_start, units = "secs"))
+elapsed_min <- as.numeric(difftime(time_end, time_start, units = "mins"))
+
+readr::write_lines(
+  c(
+    paste("rendered_at:", Sys.time()),
+    paste("input_file:", in1),
+    paste("input_file:", in2),
+    paste("output_dir:", dir_out),
+    paste("run_time_seconds:", round(elapsed_sec, 1)),
+    paste("run_time_minutes:", round(elapsed_min, 2))),
+  file.path(dir_out, "run_info.txt")
+)
+```
