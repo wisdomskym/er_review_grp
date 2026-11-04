@@ -26,6 +26,7 @@ result/create_leaflet_map/*
 result/create_static_map/*
 result/combine_map_time/*
 result/reviewtable_organize/*
+result/prisma_diagram/*
 
 # except this file
 !result/create_leaflet_map/create_leaflet_map_render.R
