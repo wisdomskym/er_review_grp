@@ -406,7 +406,7 @@ authors_recode <- c(
   "K Higashiguchi, S Nishijima, Y Kamimura… 2025" = "Higashiguchi et al. 2025",
   "Y Kawakami, K Yamazaki, K Ohashi 2014" = "Kawakami et al. 2014",
   "Uemura et al. 2026 2026" = "Uemura et al. 2026",
-  "Sakiyama and Garcia Molinos 2026 2026" = "Sakiyama & García Molinos 2026",
+  "Sakiyama and Garcia Molinos 2026 2026" = "Sakiyama & Garcia Molinos 2026",
   "山内 貴義, 工藤 雅志, 高槻 成紀 2007" = "Yamauchi et al. 2007",
   "北原 正彦 2008" = "Kitahara 2008",
   "木澤 遼; 濱 侃; 吉田 圭一郎 2022" = "Kizawa et al. 2022",
@@ -1471,9 +1471,10 @@ rt7 <- rt6 %>%
     # based on publication
     
     ecosystem = case_when(
-      publication_id == "Sakiyama 2024" ~ "forest, alpine",
       publication_id == "Shimazaki et al. 2011" ~ "subalpine",
       publication_id == "Kizawa et al. 2022" ~ "subalpine",
+      publication_id == "Uemura et al. 2026" ~ "freshwater",
+      publication_id == "Sakiyama & Garcia Molinos 2026" ~ "forest, alpine",
       
       # keep original value otherwise
       TRUE ~ as.character(ecosystem)
@@ -1627,7 +1628,6 @@ rt_cleaned %>%
 ## Absolute rate ~ axis, realm, position
 
 ```{r}
-
 # ============================================== #
 # Prepare horizontal range-shift data
 
@@ -1904,7 +1904,100 @@ gtsave(
   gt_horizontal_anova,
   filename = file.path(dir_out, "horizontal_anova.png")
 )
+```
 
+
+
+
+
+```{r}
+
+# ============================================== #
+# Create publication-ready tables
+
+
+# ============================================== #
+# Coefficient table
+
+# Intercept is  (Latitude, Negative, Terrestrial, Centre)
+
+coef_horizontal2 <- coef_horizontal %>%
+  mutate(
+    term = recode(
+      term,
+      "(Intercept)" =
+        "Intercept",
+      "gradientlongitude" =
+        "Gradient: Longitude",
+      "shift_directionpositive" =
+        "Shift direction: Positive",
+      "realmmarine" =
+        "Realm: Marine",
+      "positionleading edge" =
+        "Position: Leading edge",
+      "gradientlongitude:shift_directionpositive" =
+        "Gradient x Shift direction"
+    )
+  ) %>%
+  select(
+    -any_of("effect"),
+    term, estimate, std.error, df,
+    statistic, p.value, conf.low, conf.high
+  ) %>%
+  mutate(
+    across(
+      c(estimate, std.error, statistic, df),
+      ~ sprintf("%.2f", .x)
+    ),
+    p.value = sprintf("%.2f", p.value),
+    `95% CI` = sprintf(
+      "%.2f to %.2f", # en dash
+      conf.low, conf.high
+    )
+  ) %>% 
+  select(
+    Predictor = term,
+    Estimate = estimate,
+    `95% CI`,
+    # SE = std.error,
+    t = statistic,
+    # df,
+    p = p.value)
+
+
+# ============================================== #
+# ANOVA table
+
+anova_horizontal2 <- anova_horizontal %>%
+  mutate(
+    term = recode(
+      term,
+      "gradient" = "Gradient",
+      "shift_direction" = "Shift direction",
+      "realm" = "Realm",
+      "position" = "Position",
+      "gradient:shift_direction" =
+        "Gradient x Shift direction"
+    )
+  )
+
+
+# ============================================== #
+# Export CSV
+
+# Fixed-effect coefficients
+write.csv(
+  coef_horizontal2,
+  file = file.path(dir_out, "horizontal_coef.csv"),
+  row.names = FALSE
+)
+
+# Type III ANOVA
+write.csv(
+  anova_horizontal2,
+  file = file.path(dir_out, "horizontal_anova.csv"),
+  row.names = FALSE
+)
 ```
 
 
@@ -4616,6 +4709,24 @@ g_combined <- g_realm /
   )
 
 g_combined
+
+
+
+# ============================================== #
+# Export PNG
+
+ggsave(
+  filename = file.path(dir_out, "data_summary.png"),
+  plot = g_combined,
+  width = 38,
+  height = 35,
+  units = "cm",
+  dpi = 300,
+  bg = "white",
+  limitsize = FALSE
+)
+
+
 
 ```
 
@@ -7845,7 +7956,7 @@ make_shift_plot <- function(data, gradient_value, y_title, n_row) {
       ),
       width = 0.2,
       height = 0,
-      size = 3,
+      size = 1.5,
       alpha = 0.8
     ) +
     
@@ -7895,7 +8006,7 @@ make_shift_plot <- function(data, gradient_value, y_title, n_row) {
     ) +
     
     
-    theme_bw(base_size = 20) +
+    theme_bw(base_size = 14) +
     
     theme(
       legend.position = "none",
@@ -7957,7 +8068,7 @@ legend_plot <- ggplot(
     color = "Kingdom"
   ) +
   
-  theme_void(base_size = 20) +
+  theme_void(base_size = 14) +
   
   theme(
     legend.position = "top"
@@ -8003,6 +8114,24 @@ g_main <- g1 + g2 + g3 +
   )
 
 g_main
+
+
+
+# ============================================== #
+# Export PNG
+
+ggsave(
+  filename = file.path(dir_out, "shift_elelatlon.png"),
+  plot = g_main,
+  width = 20,
+  height = 12,
+  units = "cm",
+  dpi = 300,
+  bg = "white",
+  limitsize = FALSE
+)
+
+
 ```
 
 #### horizontal
@@ -8118,7 +8247,7 @@ g_horizontal_circular_20ma <- ggplot(
     y = NULL
   ) +
   
-  theme_bw(base_size = 20) +
+  theme_bw(base_size = 14) +
   
   theme(
     legend.position = "none",
@@ -8226,7 +8355,7 @@ g_horizontal_circular_20te <- ggplot(
     y = NULL
   ) +
   
-  theme_bw(base_size = 20) +
+  theme_bw(base_size = 14) +
   
   theme(
     legend.position = "none",
@@ -8279,6 +8408,19 @@ g4_add
 
 
 
+# ============================================== #
+# Export PNG
+
+ggsave(
+  filename = file.path(dir_out, "shift_horizontal.png"),
+  plot = g4_add,
+  width = 20,
+  height = 12,
+  units = "cm",
+  dpi = 300,
+  bg = "white",
+  limitsize = FALSE
+)
 ```
 
 
@@ -8462,16 +8604,6 @@ rt_temp <- rt_temp %>%
 
 
 
-# ------------ #
-# save
-
-readr::write_csv(
-  rt_temp,
-  fs::path(dir_out, "rt_table.csv")
-)
-
-
-
 
 
 
@@ -8598,6 +8730,23 @@ rt_temp_tab <- rt_temp %>%
     "Gradient" = gradient,
     "Position" = position
   )
+
+
+
+
+# ------------ #
+# save
+
+readr::write_csv(
+  rt_temp_tab,
+  fs::path(dir_out, "rt_table.csv")
+)
+
+
+
+
+
+
 
 # ============================================== #
 # Table
