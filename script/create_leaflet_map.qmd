@@ -64,7 +64,8 @@ pacman::p_load(
   
   # visualization
   ggplot2,
-  leafpop
+  leafpop,
+  base64enc
 )
 
 
@@ -110,7 +111,9 @@ Output directory: `{r} fs::path_rel(dir_out)`
 # table data
 studyarea <- readxl::read_xlsx(in1, sheet = "20261103_studyarea")
 
-
+studyarea2 <- studyarea %>% 
+  select(-index) %>%
+  filter(memo == "use")
 
 
 
@@ -150,19 +153,21 @@ rt_table <- readr::read_csv(
 rt_species <- readxl::read_xlsx(
   here("data", "20261103_ER_reviewtable_cleaning.xlsx"),
   sheet = "dataentry_editing")
+
 colnames(rt_species) <- gsub(" ", "_", colnames(rt_species))
+
 rt_species$Magnitude_of_shift = as.numeric(rt_species$Magnitude_of_shift)
+
 
 ```
 
 
-# Create statistical results for popups
+# Basic flow
 
 ```{r}
-library(base64enc)
 
 # ============================================== #
-### create class color list
+### create class color list (global)
 
 # Extract unique classes
 class_color_table <- data.frame(
@@ -182,7 +187,7 @@ class_palette <- setNames(
 )
 
 # ============================================== #
-### function
+### Define popup function
 
 make_popup <- function(title, fig) {
 
@@ -192,7 +197,7 @@ make_popup <- function(title, fig) {
   ggplot2::ggsave(
     filename = img_file,
     plot = fig,
-    width = 5,
+    width = 10,
     height = 3,
     dpi = 120,
     bg = "white"
@@ -218,189 +223,244 @@ make_popup <- function(title, fig) {
 
 
 # ============================================== #
-### work place
-
-rt_sp_shp = rt_species %>%
-  filter(
-    !is.na(Position),
-    !is.na(Class),
-    !is.na(Magnitude_of_shift)
-  ) %>% 
-  filter(Reference_no == studyarea2$reference_no[1])%>%
-  mutate(
-    Position = as.character(Position),
-    Class = as.character(Class)
-  ) %>%
-  group_by(Position) %>%
-  arrange(Magnitude_of_shift, .by_group = TRUE) %>%
-  mutate(bar_id = row_number()) %>%
-  ungroup()
-
-position_order <- c("Trailing", "Centroid", "Leading")
-
-# Automatically detect available positions
-positions <- c(
-  intersect(position_order, unique(rt_sp_shp$Position)),
-  setdiff(unique(rt_sp_shp$Position), position_order)
-)
-
-# Common Y-axis limits
-y_limits <- range(c(0, rt_sp_shp$Magnitude_of_shift))
-
-# Classes appearing in the current subset
-used_classes <- sort(unique(na.omit(as.character(rt_sp_shp$Class))))
-
-# Extract corresponding colors from the master palette
-plot_palette <- class_palette[used_classes]
-
-# ========================================
-# plot
-
-create_shift_plot <- function(pos) {
-
-  data_sub <- rt_sp_shp %>%
-    filter(Position == pos)
-
-  ggplot(
-    data_sub,
-    aes(
-      x = bar_id,
-      y = Magnitude_of_shift,
-      fill = Class
-    )
-  ) +
-
-    geom_col(width = 1, show.legend = TRUE) +
-
-    geom_hline(
-      yintercept = 0,
-      color = "black",
-      linewidth = 0.4
-    ) +
-
-    scale_fill_manual(
-      values = plot_palette,
-      limits = used_classes,
-      drop = FALSE
-    ) +
-
-    scale_x_continuous(
-      breaks = NULL,
-      expand = expansion(add = 0.5)
-    ) +
-
-    scale_y_continuous(
-      expand = expansion(mult = 0.05)
-    ) +
-
-    coord_cartesian(ylim = y_limits) +
-
-    labs(
-      title = paste0(pos, ", N = ", nrow(data_sub)),
-      x = NULL,
-      y = "Latitudinal shift (km/year)",
-      fill = "Class"
-    ) +
-
-    theme_classic(base_size = 10) +
-
-    theme(
-      plot.title = element_text(
-        face = "bold",
-        size = 11,
-        hjust = 0.5
-      ),
-      axis.line.x = element_blank(),
-      axis.ticks.x = element_blank(),
-      legend.position = "bottom"
-    )
-}
-
-# ========================================
-# 4. Generate plots 
-
-plot_list <- lapply(positions, create_shift_plot)
-
-names(plot_list) <- positions
-
-
-# ========================================
-# 5. Combine plots into 1 x n layout
-
-combined_plot <- patchwork::wrap_plots(
-  plot_list,
-  nrow = 1,
-  guides = "collect"
-) &
-  theme(
-    legend.position = "right"
-  )
-
-combined_plot
-
-
-
-# ========================================
-# Popup
-
-popup1 <- make_popup(
-  title = names(shp_list)[1],
-  fig = combined_plot
-)
-
-```
-
-
-
-# Basic flow
-
-```{r}
-#| include: false
-#| eval: false
-
-# names(shp_list)
-# names(shp_list)[1]
-# plot(shp_list[[1]])
-
-
-# ============================================== #
-# define colors for polygons
+### Define polygon colors
 
 polygon_colors <- grDevices::hcl.colors(
   length(shp_list),
   palette = "Dark 3"
 )
 
+
 # ============================================== #
-# map on leaflet
+### Initialize leaflet map
 
-m_example <- leaflet() %>%
-  addTiles() %>% # Add default OpenStreetMap map tiles
-  setView(lng = 138.040, lat = 36.140, zoom = 4) %>% 
-  addMarkers(lng = 141.34144193866803, lat = 43.070559674088784, 
-             popup = "Hokudai") #%>% 
-  # addPolygons(data = shp_list[[1]],
-  #             color = "blue", stroke = 0.1, opacity = 0.8,
-  #             popup = popup1) 
+m_example <- leaflet()  %>%
+  addTiles() %>%
+  setView(lng = 138.040, lat = 36.140, zoom = 4) %>%
+  addMarkers(
+    lng = 141.34144193866803,
+    lat = 43.070559674088784,
+    popup = "Hokudai"
+  )
 
-for (i in seq_along(shp_list)) {
+
+
+# ============================================== #
+### Loop through all study areas
+
+for (i in seq_len(nrow(studyarea2))) {
+
+  # Get current reference number and polygon title
+  polygon_title <- ref_i <- as.character(studyarea2$reference_no[i])
+  file_i <- as.character(studyarea2$file_final[i])
+  
+  # Remove .shp extension
+  shp_name <- tools::file_path_sans_ext(basename(file_i))
+
+  # Find matching polygon in shp_list
+  shp_index <- match(
+    shp_name,
+    tools::file_path_sans_ext(basename(names(shp_list)))
+  )
+  
+  # Check if polygon exists
+  if (is.na(shp_index)) {
+    warning("Polygon not found: ", shp_name)
+    next
+  }
+  
+  # Extract polygon directly from shp_list
+  shp_i <- shp_list[[shp_index]]
+  
+  # -------------------------------------------- #
+  # Filter species data for current study area
+
+  rt_sp_shp <- rt_species %>%
+    filter(
+      !is.na(Position),
+      !is.na(Class),
+      !is.na(Magnitude_of_shift),
+      Reference_no == ref_i
+    ) %>%
+    mutate(
+      Position = as.character(Position),
+      Class = as.character(Class)
+    ) %>%
+    group_by(Position) %>%
+    arrange(Magnitude_of_shift, .by_group = TRUE) %>%
+    mutate(bar_id = row_number()) %>%
+    ungroup()
+
+
+  # -------------------------------------------- #
+  # Generate popup only when data are available
+
+  if (nrow(rt_sp_shp) > 0) {
+
+    # Define Position order
+    position_order <- c("Trailing", "Centroid", "Leading")
+
+    positions <- c(
+      intersect(position_order, unique(rt_sp_shp$Position)),
+      setdiff(unique(rt_sp_shp$Position), position_order)
+    )
+
+    # Common Y-axis limits within current study area
+    y_limits <- range(c(0, rt_sp_shp$Magnitude_of_shift))
+
+    # Classes appearing in current subset
+    used_classes <- sort(
+      unique(na.omit(as.character(rt_sp_shp$Class)))
+    )
+
+    # Extract colors from global palette
+    plot_palette <- class_palette[used_classes]
+
+
+    # -------------------------------------------- #
+    # Define plotting function
+
+    create_shift_plot <- function(pos) {
+
+      data_sub <- rt_sp_shp %>%
+        filter(Position == pos)
+
+      ggplot(
+        data_sub,
+        aes(
+          x = bar_id,
+          y = Magnitude_of_shift,
+          fill = Class
+        )
+      ) +
+
+        geom_col(
+          width = 1,
+          show.legend = TRUE
+        ) +
+
+        geom_hline(
+          yintercept = 0,
+          color = "black",
+          linewidth = 0.4
+        ) +
+
+        scale_fill_manual(
+          values = plot_palette,
+          limits = used_classes,
+          drop = FALSE,
+          na.translate = FALSE
+        ) +
+
+        scale_x_continuous(
+          breaks = NULL,
+          expand = expansion(add = 0.5)
+        ) +
+
+        scale_y_continuous(
+          expand = expansion(mult = 0.05)
+        ) +
+
+        coord_cartesian(ylim = y_limits) +
+
+        labs(
+          title = paste0(pos, ", N = ", nrow(data_sub)),
+          x = NULL,
+          y = "Latitudinal shift (km/year)",
+          fill = "Class"
+        ) +
+
+        theme_classic(base_size = 10) +
+
+        theme(
+          plot.title = element_text(
+            face = "bold",
+            size = 11,
+            hjust = 0.5
+          ),
+          axis.line.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          legend.position = "right"
+        )
+    }
+
+
+    # -------------------------------------------- #
+    # Generate individual plots
+
+    plot_list <- lapply(positions, create_shift_plot)
+
+    names(plot_list) <- positions
+
+
+    # -------------------------------------------- #
+    # Combine plots horizontally
+
+    combined_plot <- patchwork::wrap_plots(
+      plot_list,
+      nrow = 1,
+      guides = "collect"
+    ) &
+      theme(
+        legend.position = "right"
+      )
+
+
+    # -------------------------------------------- #
+    # Create popup for current study area
+
+    popup_i <- make_popup(
+      title = polygon_title,
+      fig = combined_plot
+    )
+
+  } else {
+
+    # Display a message if no valid data exist
+    popup_i <- htmltools::HTML(paste0(
+      "<div style='width:300px;'>",
+      "<h3>", htmltools::htmlEscape(polygon_title), "</h3>",
+      "<p>No shift data available for this study area.</p>",
+      "</div>"
+    ))
+
+  }
+
+ # -------------------------------------------- #
+  # Add current polygon and popup to leaflet
 
   m_example <- m_example %>%
     addPolygons(
-      data = shp_list[[i]],
+      data = shp_i,
       color = polygon_colors[i],
       stroke = TRUE,
       weight = 1,
       opacity = 0.8,
       popup = rep(
-        popup1,
-        nrow(shp_list[[i]])
+        popup_i,
+        nrow(shp_i)
+      ),
+      popupOptions = popupOptions(
+        maxWidth = 950
       )
     )
+
+  message(
+    "Completed ", i, "/", nrow(studyarea2),
+    " : ", polygon_title
+  )
+
 }
+
 
 m_example
 
+```
+
+
+# Export
+
+```{r}
 
 # ============================================== #
 # export as self contained html
@@ -413,205 +473,6 @@ htmlwidgets::saveWidget(
 
 
 ```
-
-
-
-
-# Edit data
-
-```{r}
-
-# names(shp_list)
-# names(shp_list)[1]
-# plot(shp_list[[1]])
-
-# ============================================== #
-# edit reviewtable data
-
-rt_distinct <- rt_table %>% 
-  distinct(index, reference_no, publication_id)
-
-
-
-studyarea2 <- studyarea %>% 
-  select(-index) %>%
-  filter(memo == "use")
-
-
-# ============================================== #
-# join study area data to review table
-
-rt_distinct2 <- rt_distinct %>%
-  left_join(
-    studyarea2,
-    by = "reference_no"
-  ) %>%
-  mutate(
-    shp_name = tools::file_path_sans_ext(file_final),
-    shp = shp_list[shp_name]
-  )
-
-
-# ============================================== #
-# prepare polygon data for leaflet
-
-studyarea_cleaned <- rt_distinct2 %>%
-  group_by(shp_name) %>%
-  summarise(
-    realm = first(realm),
-    index = paste(
-      sort(unique(index)),
-      collapse = "<br>"
-    ),
-    publication_id = paste(
-      sort(unique(publication_id)),
-      collapse = "<br>"
-    ),
-    shp = list(shp[[1]]),
-    .groups = "drop"
-  ) %>%
-  mutate(
-    area = purrr::map_dbl(
-      shp,
-      ~ as.numeric(sum(sf::st_area(.x)))
-    )
-  ) %>%
-  arrange(realm, desc(area)) %>%
-  
-  # assign colors separately within each realm
-  group_by(realm) %>%
-  mutate(
-    color = case_when(
-      realm == "marine" ~ grDevices::hcl.colors(
-        n(),
-        palette = "Blues 3"
-      ),
-      realm == "terrestrial" ~ grDevices::hcl.colors(
-        n(),
-        palette = "YlOrRd"
-      )
-      
-      # realm == "marine" ~ grDevices::hcl.colors(
-      #   n(),
-      #   palette = "BluGrn"
-      # ),
-      # 
-      # realm == "terrestrial" ~ grDevices::hcl.colors(
-      #   n(),
-      #   palette = "OrRd"
-      # )
-    )
-  ) %>%
-  ungroup()
-
-
-
-# ============================================== #
-# export polygon color codes
-
-# non-expanded:
-# one row per polygon, publication_ids combined with <br>
-studyarea_color <- studyarea_cleaned %>%
-  select(
-    index,
-    shp_name,
-    realm,
-    publication_id,
-    color
-  )
-
-readr::write_csv(
-  studyarea_color,
-  file.path(dir_out, "studyarea_color.csv")
-)
-
-
-# expanded:
-# one row per publication_id
-studyarea_color_expanded <- studyarea_color %>%
-  tidyr::separate_rows(
-    index,
-    publication_id,
-    sep = "<br>"
-  )
-
-readr::write_csv(
-  studyarea_color_expanded,
-  file.path(dir_out, "studyarea_color_expanded.csv")
-)
-```
-
-
-
-
-
-
-# Visualize
-
-```{r}
-# ============================================== #
-# map on leaflet
-
-m <- leaflet() %>%
-  addTiles() %>%
-  setView(
-    lng = 138.040,
-    lat = 36.140,
-    zoom = 4
-  )
-
-m <- purrr::reduce(
-  seq_len(nrow(studyarea_cleaned)),
-  function(map, i) {
-
-    map %>%
-      addPolygons(
-        data = studyarea_cleaned$shp[[i]],
-        color = studyarea_cleaned$color[i],
-        weight = 2,
-        opacity = 1,
-        fillColor = studyarea_cleaned$color[i],
-        fillOpacity = 0.3,
-        popup = studyarea_cleaned$publication_id[i]
-      )
-  },
-  .init = m
-)
-
-m
-
-
-```
-
-
-# Export
-
-```{r}
-# ============================================== #
-# export as html
-
-# htmltools::save_html(m, 
-#                      file = here(dir_out, "map_erreview.html"))
-
-
-
-
-# ============================================== #
-# export as self contained html
-
-htmlwidgets::saveWidget(
-  m,
-  file = here(dir_out, "map_erreview_selfcont.html"),
-  selfcontained = TRUE
-)
-
-
-
-
-```
-
-
-
 
 
 
