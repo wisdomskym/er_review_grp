@@ -60,7 +60,11 @@ pacman::p_load(
   # misc
   tictoc,
   sessioninfo,
-  report
+  report,
+  
+  # visualization
+  ggplot2,
+  leafpop
 )
 
 
@@ -104,7 +108,7 @@ Output directory: `{r} fs::path_rel(dir_out)`
 
 # ============================================== #
 # table data
-studyarea <- read_xlsx(in1, sheet = "20261103_studyarea")
+studyarea <- readxl::read_xlsx(in1, sheet = "20261103_studyarea")
 
 
 
@@ -140,9 +144,211 @@ rt_table <- readr::read_csv(
 )
 
 
+# ============================================== #
+# import cleaned species reviewdata table
+
+rt_species <- readxl::read_xlsx(
+  here("data", "20261103_ER_reviewtable_cleaning.xlsx"),
+  sheet = "dataentry_editing")
+colnames(rt_species) <- gsub(" ", "_", colnames(rt_species))
+rt_species$Magnitude_of_shift = as.numeric(rt_species$Magnitude_of_shift)
+
 ```
 
 
+# Create statistical results for popups
+
+```{r}
+library(base64enc)
+
+# ============================================== #
+### create class color list
+
+# Extract unique classes
+class_color_table <- data.frame(
+  Class = sort(unique(na.omit(rt_species$Class)))
+)
+
+# Assign random colors
+set.seed(123)
+
+class_color_table$Color <- sample(
+  hcl.colors(nrow(class_color_table), palette = "Dark 3")
+)
+
+class_palette <- setNames(
+  class_color_table$Color,
+  class_color_table$Class
+)
+
+# ============================================== #
+### function
+
+make_popup <- function(title, fig) {
+
+  # temperately save ggplot as PNG
+  img_file <- tempfile(fileext = ".png")
+
+  ggplot2::ggsave(
+    filename = img_file,
+    plot = fig,
+    width = 5,
+    height = 3,
+    dpi = 120,
+    bg = "white"
+  )
+
+  # transfer plot into Base64
+  img_src <- base64enc::dataURI(
+    file = img_file,
+    mime = "image/png"
+  )
+
+  unlink(img_file)
+
+  # create HTML popup
+  htmltools::HTML(paste0(
+    "<div style='width:450px;'>",
+    "<h3>", htmltools::htmlEscape(title), "</h3>",
+    "<img src='", img_src,
+    "' style='width:100%;height:auto;'>",
+    "</div>"
+  ))
+}
+
+
+# ============================================== #
+### work place
+
+rt_sp_shp = rt_species %>%
+  filter(
+    !is.na(Position),
+    !is.na(Class),
+    !is.na(Magnitude_of_shift)
+  ) %>% 
+  filter(Reference_no == studyarea2$reference_no[1])%>%
+  mutate(
+    Position = as.character(Position),
+    Class = as.character(Class)
+  ) %>%
+  group_by(Position) %>%
+  arrange(Magnitude_of_shift, .by_group = TRUE) %>%
+  mutate(bar_id = row_number()) %>%
+  ungroup()
+
+position_order <- c("Trailing", "Centroid", "Leading")
+
+# Automatically detect available positions
+positions <- c(
+  intersect(position_order, unique(rt_sp_shp$Position)),
+  setdiff(unique(rt_sp_shp$Position), position_order)
+)
+
+# Common Y-axis limits
+y_limits <- range(c(0, rt_sp_shp$Magnitude_of_shift))
+
+# Classes appearing in the current subset
+used_classes <- sort(unique(na.omit(as.character(rt_sp_shp$Class))))
+
+# Extract corresponding colors from the master palette
+plot_palette <- class_palette[used_classes]
+
+# ========================================
+# plot
+
+create_shift_plot <- function(pos) {
+
+  data_sub <- rt_sp_shp %>%
+    filter(Position == pos)
+
+  ggplot(
+    data_sub,
+    aes(
+      x = bar_id,
+      y = Magnitude_of_shift,
+      fill = Class
+    )
+  ) +
+
+    geom_col(width = 1, show.legend = TRUE) +
+
+    geom_hline(
+      yintercept = 0,
+      color = "black",
+      linewidth = 0.4
+    ) +
+
+    scale_fill_manual(
+      values = plot_palette,
+      limits = used_classes,
+      drop = FALSE
+    ) +
+
+    scale_x_continuous(
+      breaks = NULL,
+      expand = expansion(add = 0.5)
+    ) +
+
+    scale_y_continuous(
+      expand = expansion(mult = 0.05)
+    ) +
+
+    coord_cartesian(ylim = y_limits) +
+
+    labs(
+      title = paste0(pos, ", N = ", nrow(data_sub)),
+      x = NULL,
+      y = "Latitudinal shift (km/year)",
+      fill = "Class"
+    ) +
+
+    theme_classic(base_size = 10) +
+
+    theme(
+      plot.title = element_text(
+        face = "bold",
+        size = 11,
+        hjust = 0.5
+      ),
+      axis.line.x = element_blank(),
+      axis.ticks.x = element_blank(),
+      legend.position = "bottom"
+    )
+}
+
+# ========================================
+# 4. Generate plots 
+
+plot_list <- lapply(positions, create_shift_plot)
+
+names(plot_list) <- positions
+
+
+# ========================================
+# 5. Combine plots into 1 x n layout
+
+combined_plot <- patchwork::wrap_plots(
+  plot_list,
+  nrow = 1,
+  guides = "collect"
+) &
+  theme(
+    legend.position = "right"
+  )
+
+combined_plot
+
+
+
+# ========================================
+# Popup
+
+popup1 <- make_popup(
+  title = names(shp_list)[1],
+  fig = combined_plot
+)
+
+```
 
 
 
@@ -152,9 +358,18 @@ rt_table <- readr::read_csv(
 #| include: false
 #| eval: false
 
-names(shp_list)
-names(shp_list)[1]
-plot(shp_list[[1]])
+# names(shp_list)
+# names(shp_list)[1]
+# plot(shp_list[[1]])
+
+
+# ============================================== #
+# define colors for polygons
+
+polygon_colors <- grDevices::hcl.colors(
+  length(shp_list),
+  palette = "Dark 3"
+)
 
 # ============================================== #
 # map on leaflet
@@ -163,14 +378,28 @@ m_example <- leaflet() %>%
   addTiles() %>% # Add default OpenStreetMap map tiles
   setView(lng = 138.040, lat = 36.140, zoom = 4) %>% 
   addMarkers(lng = 141.34144193866803, lat = 43.070559674088784, 
-             popup = "Hokudai") %>% 
-  addPolygons(data = shp_list[[1]], 
-              color = "blue", stroke = 0.1, opacity = 0.8,
-              popup = names(shp_list)[1]) %>% 
-  addPolygons(data = shp_list[[2]], 
-              color = "darkgreen", stroke = 0.1, opacity = 0.8,
-              popup = names(shp_list)[2])
+             popup = "Hokudai") #%>% 
+  # addPolygons(data = shp_list[[1]],
+  #             color = "blue", stroke = 0.1, opacity = 0.8,
+  #             popup = popup1) 
 
+for (i in seq_along(shp_list)) {
+
+  m_example <- m_example %>%
+    addPolygons(
+      data = shp_list[[i]],
+      color = polygon_colors[i],
+      stroke = TRUE,
+      weight = 1,
+      opacity = 0.8,
+      popup = rep(
+        popup1,
+        nrow(shp_list[[i]])
+      )
+    )
+}
+
+m_example
 
 
 # ============================================== #
