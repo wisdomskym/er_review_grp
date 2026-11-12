@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ---
 title: "create_leaflet_map"
 author: "tksym"
@@ -186,6 +187,7 @@ class_palette <- setNames(
   class_color_table$Class
 )
 
+
 # ============================================== #
 ### Define popup function
 
@@ -197,9 +199,9 @@ make_popup <- function(title, fig) {
   ggplot2::ggsave(
     filename = img_file,
     plot = fig,
-    width = 10,
-    height = 3,
-    dpi = 120,
+    width = 14,
+    height = 5,
+    dpi = 150,
     bg = "white"
   )
 
@@ -213,7 +215,7 @@ make_popup <- function(title, fig) {
 
   # create HTML popup
   htmltools::HTML(paste0(
-    "<div style='width:450px;'>",
+    "<div style='width:600px;'>",
     "<h3>", htmltools::htmlEscape(title), "</h3>",
     "<img src='", img_src,
     "' style='width:100%;height:auto;'>",
@@ -223,11 +225,38 @@ make_popup <- function(title, fig) {
 
 
 # ============================================== #
+### Group references by shapefile
+
+shp_groups <- studyarea2 %>%
+  mutate(
+    reference_no = trimws(as.character(reference_no)),
+    shp_name = tools::file_path_sans_ext(
+      basename(trimws(as.character(file_final)))
+    )
+  ) %>%
+  filter(
+    !is.na(shp_name),
+    nzchar(shp_name),
+    !is.na(reference_no),
+    nzchar(reference_no)
+  ) %>%
+  group_by(shp_name) %>%
+  summarise(
+    reference_nos = list(unique(reference_no)),
+    .groups = "drop"
+  )
+
+
+# ============================================== #
 ### Define polygon colors
 
 polygon_colors <- grDevices::hcl.colors(
   length(shp_list),
   palette = "Dark 3"
+)
+
+shp_names <- tools::file_path_sans_ext(
+  basename(names(shp_list))
 )
 
 
@@ -248,39 +277,48 @@ m_example <- leaflet()  %>%
 # ============================================== #
 ### Loop through all study areas
 
-for (i in seq_len(nrow(studyarea2))) {
+for (i in seq_len(nrow(shp_groups))) {
 
-  # Get current reference number and polygon title
-  polygon_title <- ref_i <- as.character(studyarea2$reference_no[i])
-  file_i <- as.character(studyarea2$file_final[i])
-  
-  # Remove .shp extension
-  shp_name <- tools::file_path_sans_ext(basename(file_i))
+  # -------------------------------------------- #
+  # Get current shapefile and corresponding references
 
+  shp_name <- shp_groups$shp_name[i]
+
+  # NEW: All reference numbers using this shapefile
+  refs_i <- shp_groups$reference_nos[[i]]
+
+  # Use shapefile name as popup title
+  polygon_title <- paste0(shp_name, ".shp")
+
+
+  # -------------------------------------------- #
   # Find matching polygon in shp_list
+
   shp_index <- match(
     shp_name,
-    tools::file_path_sans_ext(basename(names(shp_list)))
+    shp_names
   )
-  
+
   # Check if polygon exists
   if (is.na(shp_index)) {
     warning("Polygon not found: ", shp_name)
     next
   }
-  
+
   # Extract polygon directly from shp_list
   shp_i <- shp_list[[shp_index]]
-  
+
+
   # -------------------------------------------- #
-  # Filter species data for current study area
+  # Filter and combine species data
+  # NEW: Include ALL references sharing this polygon
 
   rt_sp_shp <- rt_species %>%
     filter(
       !is.na(Position),
       !is.na(Class),
       !is.na(Magnitude_of_shift),
-      Reference_no == ref_i
+      trimws(as.character(Reference_no)) %in% refs_i
     ) %>%
     mutate(
       Position = as.character(Position),
@@ -298,17 +336,32 @@ for (i in seq_len(nrow(studyarea2))) {
   if (nrow(rt_sp_shp) > 0) {
 
     # Define Position order
-    position_order <- c("Trailing", "Centroid", "Leading")
-
-    positions <- c(
-      intersect(position_order, unique(rt_sp_shp$Position)),
-      setdiff(unique(rt_sp_shp$Position), position_order)
+    position_order <- c(
+      "Trailing", "Centroid", "Leading"
     )
 
-    # Common Y-axis limits within current study area
-    y_limits <- range(c(0, rt_sp_shp$Magnitude_of_shift))
+    # Automatically detect available positions
+    positions <- c(
+      intersect(
+        position_order,
+        unique(rt_sp_shp$Position)
+      ),
+      setdiff(
+        unique(rt_sp_shp$Position),
+        position_order
+      )
+    )
 
-    # Classes appearing in current subset
+    # Common Y-axis limits within current polygon
+    y_limits <- range(
+      c(0, rt_sp_shp$Magnitude_of_shift)
+    )
+
+    if (diff(y_limits) == 0) {
+      y_limits <- y_limits + c(-1, 1)
+    }
+
+    # Classes appearing in current polygon subset
     used_classes <- sort(
       unique(na.omit(as.character(rt_sp_shp$Class)))
     )
@@ -361,21 +414,25 @@ for (i in seq_len(nrow(studyarea2))) {
           expand = expansion(mult = 0.05)
         ) +
 
-        coord_cartesian(ylim = y_limits) +
+        coord_cartesian(
+          ylim = y_limits
+        ) +
 
         labs(
-          title = paste0(pos, ", N = ", nrow(data_sub)),
+          title = paste0(
+            pos, ", N = ", nrow(data_sub)
+          ),
           x = NULL,
           y = "Latitudinal shift (km/year)",
           fill = "Class"
         ) +
 
-        theme_classic(base_size = 10) +
+        theme_classic(base_size = 20) +
 
         theme(
           plot.title = element_text(
             face = "bold",
-            size = 11,
+            size = 19,
             hjust = 0.5
           ),
           axis.line.x = element_blank(),
@@ -388,7 +445,10 @@ for (i in seq_len(nrow(studyarea2))) {
     # -------------------------------------------- #
     # Generate individual plots
 
-    plot_list <- lapply(positions, create_shift_plot)
+    plot_list <- lapply(
+      positions,
+      create_shift_plot
+    )
 
     names(plot_list) <- positions
 
@@ -407,7 +467,7 @@ for (i in seq_len(nrow(studyarea2))) {
 
 
     # -------------------------------------------- #
-    # Create popup for current study area
+    # Create popup for current polygon
 
     popup_i <- make_popup(
       title = polygon_title,
@@ -420,7 +480,7 @@ for (i in seq_len(nrow(studyarea2))) {
     popup_i <- htmltools::HTML(paste0(
       "<div style='width:300px;'>",
       "<h3>", htmltools::htmlEscape(polygon_title), "</h3>",
-      "<p>No shift data available for this study area.</p>",
+      "<p>No shift data available for this polygon.</p>",
       "</div>"
     ))
 
@@ -432,7 +492,7 @@ for (i in seq_len(nrow(studyarea2))) {
   m_example <- m_example %>%
     addPolygons(
       data = shp_i,
-      color = polygon_colors[i],
+      color = polygon_colors[shp_index],
       stroke = TRUE,
       weight = 1,
       opacity = 0.8,
@@ -441,7 +501,8 @@ for (i in seq_len(nrow(studyarea2))) {
         nrow(shp_i)
       ),
       popupOptions = popupOptions(
-        maxWidth = 950
+        maxWidth = 1000,
+        maxHeight = 700
       )
     )
 
@@ -454,6 +515,7 @@ for (i in seq_len(nrow(studyarea2))) {
 
 
 m_example
+
 
 ```
 
